@@ -10,6 +10,7 @@ import Sidebar from './Sidebar';
 import ChatPanel from './ChatPanel';
 import DashboardPanel from './DashboardPanel';
 import ReviewPanel from './ReviewPanel';
+import BottomBar from './BottomBar';
 
 export default function ProjectView() {
   const { projectId } = useParams();
@@ -25,6 +26,8 @@ export default function ProjectView() {
 
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const { subscribeToImage } = useWebSocket();
@@ -89,11 +92,11 @@ export default function ProjectView() {
         style={{
           width: '100vw',
           height: '100vh',
-          background: '#1e1e1e',
+          background: '#f0f0f0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#888',
+          color: '#999',
           fontSize: 14,
         }}
       >
@@ -109,28 +112,39 @@ export default function ProjectView() {
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        background: '#1e1e1e',
-        color: '#e0e0e0',
+        background: '#f0f0f0',
+        color: '#333',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         overflow: 'hidden',
       }}
     >
+      {/* TopBar at top */}
       <TopBar
         onOpenDashboard={() => setDashboardOpen(true)}
         onOpenReview={() => setReviewOpen(true)}
+        annotationsVisible={annotationsVisible}
+        onToggleAnnotations={() => setAnnotationsVisible((v) => !v)}
       />
 
+      {/* Middle row: Sidebar (left) | AnnotationCanvas (center) | Toolbar (right) */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <Toolbar />
+        {/* Sidebar on the LEFT (icon tabs + content panel) */}
+        <Sidebar />
 
+        {/* Center: Canvas + BottomBar stacked vertically */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <AnnotationCanvas />
-          <ChatPanel />
+          <AnnotationCanvas annotationsVisible={annotationsVisible} />
+          <BottomBar />
         </div>
 
-        <Sidebar />
+        {/* Toolbar on the RIGHT (tool strip) */}
+        <Toolbar onToggleChat={() => setChatOpen((v) => !v)} />
       </div>
 
+      {/* ChatPanel at the very bottom (collapsible) */}
+      {chatOpen && <ChatPanel />}
+
+      {/* DashboardPanel and ReviewPanel as modals (overlays) */}
       <DashboardPanel
         isOpen={dashboardOpen}
         onClose={() => setDashboardOpen(false)}

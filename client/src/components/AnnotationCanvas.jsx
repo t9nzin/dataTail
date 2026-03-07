@@ -75,7 +75,7 @@ function pointInBbox(px, py, box) {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function AnnotationCanvas({ onAnnotationCreated }) {
+export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisible = true }) {
   // Refs
   const containerRef = useRef(null);
   const canvasRef = useRef(null);     // bottom: image layer
@@ -231,7 +231,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
 
     // --- Image layer ---
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = '#e8e8e8';
     ctx.fillRect(0, 0, w, h);
 
     const img = imageRef.current;
@@ -247,29 +247,31 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
     // --- Overlay layer ---
     octx.clearRect(0, 0, w, h);
 
-    // Draw annotations
-    for (const ann of annotations) {
-      const isSelected =
-        selectedAnnotation && selectedAnnotation.id === ann.id;
-      const color = labelColor(ann.label, labelClasses);
-      const data = parseData(ann.data);
-      if (!data) continue;
+    // Draw annotations (skip if annotationsVisible is false)
+    if (annotationsVisible) {
+      for (const ann of annotations) {
+        const isSelected =
+          selectedAnnotation && selectedAnnotation.id === ann.id;
+        const color = labelColor(ann.label, labelClasses);
+        const data = parseData(ann.data);
+        if (!data) continue;
 
-      if (ann.type === 'polygon') {
-        drawPolygon(octx, data, color, isSelected);
-      } else if (ann.type === 'bbox') {
-        drawBbox(octx, data, color, ann.label, isSelected);
+        if (ann.type === 'polygon') {
+          drawPolygon(octx, data, color, isSelected);
+        } else if (ann.type === 'bbox') {
+          drawBbox(octx, data, color, ann.label, isSelected);
+        }
       }
-    }
 
-    // Draw AI suggestion results (pending)
-    for (const result of aiResults) {
-      const data = parseData(result.data || result.polygon || result);
-      if (!data) continue;
-      const color = result.label
-        ? labelColor(result.label, labelClasses)
-        : '#FFD700';
-      drawAiSuggestion(octx, data, color, result);
+      // Draw AI suggestion results (pending)
+      for (const result of aiResults) {
+        const data = parseData(result.data || result.polygon || result);
+        if (!data) continue;
+        const color = result.label
+          ? labelColor(result.label, labelClasses)
+          : '#6C5CE7';
+        drawAiSuggestion(octx, data, color, result);
+      }
     }
 
     // Draw box-segment in-progress rectangle
@@ -278,7 +280,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
       const tl = imageToCanvas(b.x1, b.y1);
       const br = imageToCanvas(b.x2, b.y2);
       octx.save();
-      octx.strokeStyle = '#FFD700';
+      octx.strokeStyle = '#6C5CE7';
       octx.lineWidth = 2;
       octx.setLineDash([6, 3]);
       octx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
@@ -292,7 +294,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
         const cp = imageToCanvas(pt.x, pt.y);
         octx.beginPath();
         octx.arc(cp.x, cp.y, POINT_RADIUS, 0, Math.PI * 2);
-        octx.fillStyle = pt.label === 1 ? '#00FF00' : '#FF0000';
+        octx.fillStyle = pt.label === 1 ? '#6C5CE7' : '#e74c3c';
         octx.fill();
         octx.strokeStyle = '#ffffff';
         octx.lineWidth = 1.5;
@@ -303,7 +305,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
     // Draw in-progress polygon
     if (polyPoints.length > 0) {
       octx.save();
-      octx.strokeStyle = '#FFD700';
+      octx.strokeStyle = '#6C5CE7';
       octx.lineWidth = 1.5;
       octx.setLineDash([5, 3]);
       octx.beginPath();
@@ -326,7 +328,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
         octx.beginPath();
         octx.arc(cp.x, cp.y, i === 0 ? 6 : 4, 0, Math.PI * 2);
         // First point gets a bigger green ring to indicate "close here"
-        octx.fillStyle = i === 0 ? '#FFD700' : '#ffffff';
+        octx.fillStyle = i === 0 ? '#6C5CE7' : '#ffffff';
         octx.fill();
         octx.strokeStyle = '#333';
         octx.lineWidth = 1;
@@ -578,7 +580,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
     const cy = h / 2;
     const t = performance.now() / 600;
     ctx.save();
-    ctx.strokeStyle = '#FFD700';
+    ctx.strokeStyle = '#6C5CE7';
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.beginPath();

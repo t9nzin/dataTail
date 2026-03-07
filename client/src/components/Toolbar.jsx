@@ -1,88 +1,191 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useStore } from '../store';
 import * as api from '../api';
 
-const ToolIcon = ({ id }) => {
-  const s = { width: 20, height: 20, stroke: 'currentColor', fill: 'none', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
-  switch (id) {
-    case 'select':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <path d="M5 3l3.5 16 3-6.5L18 9z" fill="currentColor" stroke="currentColor" />
-        </svg>
-      );
-    case 'click-segment':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="3" fill="currentColor" />
-          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-        </svg>
-      );
-    case 'box-segment':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 2" />
-        </svg>
-      );
-    case 'segment-everything':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <circle cx="8" cy="8" r="4" />
-          <circle cx="17" cy="9" r="3" />
-          <circle cx="11" cy="17" r="4" />
-        </svg>
-      );
-    case 'polygon':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <polygon points="12,3 21,9 18,20 6,20 3,9" />
-        </svg>
-      );
-    case 'bbox':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <rect x="3" y="3" width="18" height="18" rx="1" />
-        </svg>
-      );
-    case 'pan':
-      return (
-        <svg {...s} viewBox="0 0 24 24">
-          <path d="M12 2l3 3h-2v4h4v-2l3 3-3 3v-2h-4v4h2l-3 3-3-3h2v-4H7v2l-3-3 3-3v2h4V5H9z" fill="currentColor" stroke="none" />
-        </svg>
-      );
-    default:
-      return null;
-  }
+// ── Icon Components ──────────────────────────────────────────────────────────
+
+const iconProps = {
+  width: 20,
+  height: 20,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
 };
 
-const tools = [
-  { id: 'select', title: 'Select (V)', key: 'v' },
-  { id: 'polygon', title: 'Polygon (P)', key: 'p' },
-  { id: 'bbox', title: 'Bounding Box (R)', key: 'r' },
-  { id: 'click-segment', title: 'Click Segment (C)', key: 'c' },
-  { id: 'box-segment', title: 'Box Segment (B)', key: 'b' },
-  { id: 'pan', title: 'Pan (Space)', key: ' ' },
+function SelectIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M5 3l3.5 16 3-6.5L18 9z" fill="currentColor" stroke="currentColor" />
+    </svg>
+  );
+}
+
+function PolygonIcon() {
+  return (
+    <svg {...iconProps}>
+      <polygon points="12,3 21,9 18,20 6,20 3,9" />
+    </svg>
+  );
+}
+
+function BboxIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="3" y="3" width="18" height="18" rx="1" />
+    </svg>
+  );
+}
+
+function ClickSegmentIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+      <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+    </svg>
+  );
+}
+
+function BoxSegmentIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 2" />
+    </svg>
+  );
+}
+
+function SparkleIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2z" fill="currentColor" stroke="currentColor" strokeWidth="1" />
+      <path d="M18 14l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3z" fill="currentColor" stroke="currentColor" strokeWidth="0.8" />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H12" />
+      <path d="M7 6l-4 4 4 4" />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h1" />
+      <path d="M17 6l4 4-4 4" />
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg {...iconProps}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 2a10 10 0 0 1 10 10">
+        <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
+      </path>
+    </svg>
+  );
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+
+const ACCENT = '#6C5CE7';
+const ACCENT_BG = 'rgba(108, 92, 231, 0.10)';
+
+const toolbarStyle = {
+  width: 48,
+  background: '#fff',
+  borderLeft: '1px solid #e5e5e5',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  paddingTop: 8,
+  paddingBottom: 8,
+  userSelect: 'none',
+  flexShrink: 0,
+  zIndex: 10,
+};
+
+const dividerStyle = {
+  width: 28,
+  height: 1,
+  background: '#e5e5e5',
+  margin: '6px 0',
+};
+
+function btnStyle(isActive) {
+  return {
+    width: 36,
+    height: 36,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: isActive ? ACCENT_BG : 'transparent',
+    color: isActive ? ACCENT : '#666',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    marginBottom: 2,
+    transition: 'background 0.15s, color 0.15s',
+    padding: 0,
+  };
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+const drawingTools = [
+  { id: 'select', title: 'Select (V)', key: 'v', Icon: SelectIcon },
+  { id: 'polygon', title: 'Polygon (P)', key: 'p', Icon: PolygonIcon },
+  { id: 'bbox', title: 'Bounding Box (R)', key: 'r', Icon: BboxIcon },
 ];
 
-export default function Toolbar() {
+const aiTools = [
+  { id: 'click-segment', title: 'Click Segment (C)', key: 'c', Icon: ClickSegmentIcon },
+  { id: 'box-segment', title: 'Box Segment (B)', key: 'b', Icon: BoxSegmentIcon },
+];
+
+export default function Toolbar({ onToggleChat }) {
   const activeTool = useStore((s) => s.activeTool);
   const setActiveTool = useStore((s) => s.setActiveTool);
-  const labelClasses = useStore((s) => s.labelClasses);
-  const activeLabel = useStore((s) => s.activeLabel);
-  const setActiveLabel = useStore((s) => s.setActiveLabel);
-  const currentProject = useStore((s) => s.currentProject);
   const currentImage = useStore((s) => s.currentImage);
-  const setLabelClasses = useStore((s) => s.setLabelClasses);
   const setAiResults = useStore((s) => s.setAiResults);
   const setAiProcessing = useStore((s) => s.setAiProcessing);
   const isAiProcessing = useStore((s) => s.isAiProcessing);
+  const selectedAnnotation = useStore((s) => s.selectedAnnotation);
+  const removeAnnotation = useStore((s) => s.removeAnnotation);
+  const setSelectedAnnotation = useStore((s) => s.setSelectedAnnotation);
 
-  const [addingLabel, setAddingLabel] = useState(false);
-  const [newLabelName, setNewLabelName] = useState('');
-  const [newLabelColor, setNewLabelColor] = useState('#4a9eff');
+  const [chatOpen, setChatOpen] = useState(false);
   const [prevTool, setPrevTool] = useState(null);
 
-  async function handleSegmentEverything() {
+  // ── Segment Everything ─────────────────────────────────────────────────
+
+  const handleSegmentEverything = useCallback(async () => {
     if (!currentImage?.id || isAiProcessing) return;
     setAiProcessing(true);
     try {
@@ -107,13 +210,38 @@ export default function Toolbar() {
     } finally {
       setAiProcessing(false);
     }
-  }
+  }, [currentImage?.id, isAiProcessing, setAiProcessing, setAiResults]);
+
+  // ── Delete selected annotation ─────────────────────────────────────────
+
+  const handleDelete = useCallback(async () => {
+    if (!selectedAnnotation) return;
+    try {
+      await api.deleteAnnotation(selectedAnnotation.id);
+      removeAnnotation(selectedAnnotation.id);
+      setSelectedAnnotation(null);
+    } catch (err) {
+      console.error('Failed to delete annotation:', err);
+    }
+  }, [selectedAnnotation, removeAnnotation, setSelectedAnnotation]);
+
+  // ── Toggle chat ────────────────────────────────────────────────────────
+
+  const handleToggleChat = useCallback(() => {
+    const next = !chatOpen;
+    setChatOpen(next);
+    if (onToggleChat) onToggleChat(next);
+  }, [chatOpen, onToggleChat]);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────
 
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
         return;
       }
+
+      // Space for temporary pan
       if (e.key === ' ') {
         e.preventDefault();
         if (!prevTool) {
@@ -122,13 +250,37 @@ export default function Toolbar() {
         }
         return;
       }
+
+      // E for segment everything
       if (e.key.toLowerCase() === 'e') {
         handleSegmentEverything();
         return;
       }
-      const tool = tools.find((t) => t.key === e.key.toLowerCase());
-      if (tool) {
-        setActiveTool(tool.id);
+
+      // T for chat toggle
+      if (e.key.toLowerCase() === 't') {
+        handleToggleChat();
+        return;
+      }
+
+      // Delete / Backspace for delete selected
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        handleDelete();
+        return;
+      }
+
+      // Drawing tools
+      const drawTool = drawingTools.find((t) => t.key === e.key.toLowerCase());
+      if (drawTool) {
+        setActiveTool(drawTool.id);
+        return;
+      }
+
+      // AI tools
+      const aiTool = aiTools.find((t) => t.key === e.key.toLowerCase());
+      if (aiTool) {
+        setActiveTool(aiTool.id);
+        return;
       }
     }
 
@@ -145,313 +297,146 @@ export default function Toolbar() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [activeTool, prevTool, setActiveTool]);
+  }, [activeTool, prevTool, setActiveTool, handleSegmentEverything, handleToggleChat, handleDelete]);
 
-  async function handleAddLabel() {
-    if (!newLabelName.trim() || !currentProject) return;
-    try {
-      const label = await api.createLabel(currentProject.id, newLabelName.trim(), newLabelColor);
-      setLabelClasses([...labelClasses, label]);
-      if (!activeLabel) {
-        setActiveLabel(label);
-      }
-      setNewLabelName('');
-      setNewLabelColor('#4a9eff');
-      setAddingLabel(false);
-    } catch (err) {
-      console.error('Failed to create label:', err);
-    }
-  }
-
-  const defaultColors = ['#4a9eff', '#ff4a4a', '#4aff4a', '#ffff4a', '#ff4aff', '#4affff', '#ff8c00', '#8c00ff'];
+  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div
-      style={{
-        width: 60,
-        background: '#2d2d2d',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        paddingTop: 8,
-        borderRight: '1px solid #3d3d3d',
-        userSelect: 'none',
-        flexShrink: 0,
-      }}
-    >
-      {tools.map((tool) => (
+    <div style={toolbarStyle}>
+      {/* Drawing tools */}
+      {drawingTools.map((tool) => (
         <button
           key={tool.id}
           title={tool.title}
           onClick={() => setActiveTool(tool.id)}
-          style={{
-            width: 44,
-            height: 44,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: activeTool === tool.id ? '#4a9eff' : 'transparent',
-            color: activeTool === tool.id ? '#fff' : '#b0b0b0',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: 18,
-            fontWeight: 700,
-            fontFamily: 'monospace',
-            marginBottom: 4,
-            transition: 'background 0.15s, color 0.15s',
-          }}
+          style={btnStyle(activeTool === tool.id)}
           onMouseEnter={(e) => {
-            if (activeTool !== tool.id) {
-              e.currentTarget.style.background = '#3d3d3d';
-            }
+            if (activeTool !== tool.id) e.currentTarget.style.background = '#f0f0f0';
           }}
           onMouseLeave={(e) => {
-            if (activeTool !== tool.id) {
-              e.currentTarget.style.background = 'transparent';
-            }
+            if (activeTool !== tool.id) e.currentTarget.style.background = 'transparent';
           }}
         >
-          <ToolIcon id={tool.id} />
+          <tool.Icon />
         </button>
       ))}
 
-      <div
-        style={{
-          width: 36,
-          height: 1,
-          background: '#555',
-          margin: '8px 0',
-        }}
-      />
+      <div style={dividerStyle} />
 
-      {/* Segment Everything action button */}
+      {/* AI tools */}
+      {aiTools.map((tool) => (
+        <button
+          key={tool.id}
+          title={tool.title}
+          onClick={() => setActiveTool(tool.id)}
+          style={btnStyle(activeTool === tool.id)}
+          onMouseEnter={(e) => {
+            if (activeTool !== tool.id) e.currentTarget.style.background = '#f0f0f0';
+          }}
+          onMouseLeave={(e) => {
+            if (activeTool !== tool.id) e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          <tool.Icon />
+        </button>
+      ))}
+
+      {/* Segment Everything - special action button */}
       <button
-        title="Segment All (E)"
+        title="Segment Everything (E)"
         onClick={handleSegmentEverything}
         disabled={!currentImage || isAiProcessing}
         style={{
-          width: 52,
+          width: 36,
+          height: 36,
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 3,
-          padding: '8px 4px',
-          background: isAiProcessing ? '#ff4aff22' : '#ff4aff11',
-          color: !currentImage ? '#555' : isAiProcessing ? '#ff4aff' : '#ff4aff',
-          border: '1px solid #ff4aff44',
-          borderRadius: 6,
+          background: isAiProcessing ? ACCENT_BG : 'transparent',
+          color: !currentImage ? '#ccc' : ACCENT,
+          border: `1.5px solid ${!currentImage ? '#e5e5e5' : ACCENT}`,
+          borderRadius: 8,
           cursor: !currentImage || isAiProcessing ? 'default' : 'pointer',
-          marginBottom: 8,
+          marginBottom: 2,
+          padding: 0,
           transition: 'background 0.15s, border-color 0.15s',
-          opacity: !currentImage ? 0.3 : 1,
+          opacity: !currentImage ? 0.4 : 1,
         }}
         onMouseEnter={(e) => {
           if (currentImage && !isAiProcessing) {
-            e.currentTarget.style.background = '#ff4aff33';
-            e.currentTarget.style.borderColor = '#ff4aff88';
+            e.currentTarget.style.background = ACCENT_BG;
           }
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = isAiProcessing ? '#ff4aff22' : '#ff4aff11';
-          e.currentTarget.style.borderColor = '#ff4aff44';
+          if (!isAiProcessing) {
+            e.currentTarget.style.background = 'transparent';
+          }
         }}
       >
-        {isAiProcessing ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 2a10 10 0 0 1 10 10">
-              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
-            </path>
-          </svg>
-        ) : (
-          <ToolIcon id="segment-everything" />
-        )}
-        <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase' }}>
-          {isAiProcessing ? 'Running' : 'Seg All'}
-        </span>
+        {isAiProcessing ? <SpinnerIcon /> : <SparkleIcon />}
       </button>
 
-      <div
-        style={{
-          width: 36,
-          height: 1,
-          background: '#555',
-          margin: '0 0 8px 0',
-        }}
-      />
+      <div style={dividerStyle} />
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          width: '100%',
-          padding: '0 4px',
-          flex: 1,
-          overflow: 'auto',
+      {/* Chat toggle */}
+      <button
+        title="Chat / NL Annotate (T)"
+        onClick={handleToggleChat}
+        style={btnStyle(chatOpen)}
+        onMouseEnter={(e) => {
+          if (!chatOpen) e.currentTarget.style.background = '#f0f0f0';
+        }}
+        onMouseLeave={(e) => {
+          if (!chatOpen) e.currentTarget.style.background = 'transparent';
         }}
       >
-        <div
-          style={{
-            fontSize: 9,
-            color: '#888',
-            textTransform: 'uppercase',
-            letterSpacing: 1,
-            marginBottom: 6,
-          }}
-        >
-          Label
-        </div>
+        <ChatIcon />
+      </button>
 
-        {labelClasses.map((lc) => (
-          <button
-            key={lc.id}
-            title={lc.name}
-            onClick={() => setActiveLabel(lc)}
-            style={{
-              width: 44,
-              height: 28,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              background: activeLabel?.id === lc.id ? '#3d3d3d' : 'transparent',
-              border: activeLabel?.id === lc.id ? '1px solid #4a9eff' : '1px solid transparent',
-              borderRadius: 4,
-              cursor: 'pointer',
-              marginBottom: 2,
-              padding: 0,
-            }}
-          >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 2,
-                background: lc.color || '#4a9eff',
-                flexShrink: 0,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 9,
-                color: '#ccc',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: 24,
-              }}
-            >
-              {lc.name}
-            </span>
-          </button>
-        ))}
+      {/* Undo */}
+      <button
+        title="Undo"
+        onClick={() => {/* undo not yet implemented */}}
+        style={btnStyle(false)}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f0f0'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        <UndoIcon />
+      </button>
 
-        {addingLabel ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 4,
-              marginTop: 4,
-              width: '100%',
-              padding: '0 2px',
-            }}
-          >
-            <input
-              autoFocus
-              value={newLabelName}
-              onChange={(e) => setNewLabelName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAddLabel();
-                if (e.key === 'Escape') setAddingLabel(false);
-              }}
-              placeholder="name"
-              style={{
-                width: '100%',
-                fontSize: 10,
-                padding: '3px 4px',
-                background: '#1e1e1e',
-                border: '1px solid #555',
-                borderRadius: 3,
-                color: '#e0e0e0',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-            <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {defaultColors.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setNewLabelColor(c)}
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 2,
-                    background: c,
-                    border: newLabelColor === c ? '2px solid #fff' : '1px solid #555',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                />
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 2 }}>
-              <button
-                onClick={handleAddLabel}
-                style={{
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  background: '#4a9eff',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 3,
-                  cursor: 'pointer',
-                }}
-              >
-                OK
-              </button>
-              <button
-                onClick={() => setAddingLabel(false)}
-                style={{
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  background: '#555',
-                  color: '#ccc',
-                  border: 'none',
-                  borderRadius: 3,
-                  cursor: 'pointer',
-                }}
-              >
-                X
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setAddingLabel(true)}
-            title="Add Label"
-            style={{
-              width: 44,
-              height: 28,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'transparent',
-              color: '#888',
-              border: '1px dashed #555',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontSize: 16,
-              marginTop: 4,
-            }}
-          >
-            +
-          </button>
-        )}
-      </div>
+      {/* Redo */}
+      <button
+        title="Redo"
+        onClick={() => {/* redo not yet implemented */}}
+        style={btnStyle(false)}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#f0f0f0'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        <RedoIcon />
+      </button>
+
+      <div style={dividerStyle} />
+
+      {/* Delete */}
+      <button
+        title="Delete Selected (Del)"
+        onClick={handleDelete}
+        disabled={!selectedAnnotation}
+        style={{
+          ...btnStyle(false),
+          color: selectedAnnotation ? '#e74c3c' : '#ccc',
+          opacity: selectedAnnotation ? 1 : 0.4,
+          cursor: selectedAnnotation ? 'pointer' : 'default',
+        }}
+        onMouseEnter={(e) => {
+          if (selectedAnnotation) e.currentTarget.style.background = 'rgba(231, 76, 60, 0.08)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <DeleteIcon />
+      </button>
     </div>
   );
 }
