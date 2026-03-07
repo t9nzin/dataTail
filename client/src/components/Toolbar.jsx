@@ -47,7 +47,6 @@ const tools = [
   { id: 'select', title: 'Select (V)', key: 'v' },
   { id: 'click-segment', title: 'Click Segment (C)', key: 'c' },
   { id: 'box-segment', title: 'Box Segment (B)', key: 'b' },
-  { id: 'segment-everything', title: 'Segment All (E)', key: 'e' },
   { id: 'pan', title: 'Pan (Space)', key: ' ' },
 ];
 
@@ -58,12 +57,43 @@ export default function Toolbar() {
   const activeLabel = useStore((s) => s.activeLabel);
   const setActiveLabel = useStore((s) => s.setActiveLabel);
   const currentProject = useStore((s) => s.currentProject);
+  const currentImage = useStore((s) => s.currentImage);
   const setLabelClasses = useStore((s) => s.setLabelClasses);
+  const setAiResults = useStore((s) => s.setAiResults);
+  const setAiProcessing = useStore((s) => s.setAiProcessing);
+  const isAiProcessing = useStore((s) => s.isAiProcessing);
 
   const [addingLabel, setAddingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
   const [newLabelColor, setNewLabelColor] = useState('#4a9eff');
   const [prevTool, setPrevTool] = useState(null);
+
+  async function handleSegmentEverything() {
+    if (!currentImage?.id || isAiProcessing) return;
+    setAiProcessing(true);
+    try {
+      const results = await api.segmentEverything(currentImage.id);
+      if (results && Array.isArray(results)) {
+        const suggestions = results.map((seg) => ({
+          data: seg.polygon,
+          polygon: seg.polygon,
+          score: seg.predicted_iou,
+          stability: seg.stability_score,
+          area: seg.area,
+          bbox: seg.bbox,
+          rle: seg.rle,
+          label: null,
+          source: 'sam-auto',
+          type: 'polygon',
+        }));
+        setAiResults(suggestions);
+      }
+    } catch (err) {
+      console.error('Segment everything failed:', err);
+    } finally {
+      setAiProcessing(false);
+    }
+  }
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -76,6 +106,10 @@ export default function Toolbar() {
           setPrevTool(activeTool);
           setActiveTool('pan');
         }
+        return;
+      }
+      if (e.key.toLowerCase() === 'e') {
+        handleSegmentEverything();
         return;
       }
       const tool = tools.find((t) => t.key === e.key.toLowerCase());
@@ -174,6 +208,62 @@ export default function Toolbar() {
           height: 1,
           background: '#555',
           margin: '8px 0',
+        }}
+      />
+
+      {/* Segment Everything action button */}
+      <button
+        title="Segment All (E)"
+        onClick={handleSegmentEverything}
+        disabled={!currentImage || isAiProcessing}
+        style={{
+          width: 52,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 3,
+          padding: '8px 4px',
+          background: isAiProcessing ? '#ff4aff22' : '#ff4aff11',
+          color: !currentImage ? '#555' : isAiProcessing ? '#ff4aff' : '#ff4aff',
+          border: '1px solid #ff4aff44',
+          borderRadius: 6,
+          cursor: !currentImage || isAiProcessing ? 'default' : 'pointer',
+          marginBottom: 8,
+          transition: 'background 0.15s, border-color 0.15s',
+          opacity: !currentImage ? 0.3 : 1,
+        }}
+        onMouseEnter={(e) => {
+          if (currentImage && !isAiProcessing) {
+            e.currentTarget.style.background = '#ff4aff33';
+            e.currentTarget.style.borderColor = '#ff4aff88';
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = isAiProcessing ? '#ff4aff22' : '#ff4aff11';
+          e.currentTarget.style.borderColor = '#ff4aff44';
+        }}
+      >
+        {isAiProcessing ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M12 2a10 10 0 0 1 10 10">
+              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
+            </path>
+          </svg>
+        ) : (
+          <ToolIcon id="segment-everything" />
+        )}
+        <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase' }}>
+          {isAiProcessing ? 'Running' : 'Seg All'}
+        </span>
+      </button>
+
+      <div
+        style={{
+          width: 36,
+          height: 1,
+          background: '#555',
+          margin: '0 0 8px 0',
         }}
       />
 

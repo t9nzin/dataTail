@@ -30,78 +30,35 @@ def crop_region(image: Image.Image, bbox: dict[str, int]) -> Image.Image:
 
 
 # ---------------------------------------------------------------------------
-# Mask  -->  polygon  (no OpenCV dependency)
+# Mask  -->  polygon  (using OpenCV findContours for correct ordering)
 # ---------------------------------------------------------------------------
 
 def mask_to_polygon(mask: np.ndarray, simplify_tolerance: float = 2.0) -> list[list[int]]:
     """Convert a binary mask to an ordered list of ``[x, y]`` boundary points.
 
-    The approach:
-    1. Find boundary pixels (mask==1 whose 4-neighbour is 0 or at the image
-       edge).
-    2. Compute the centroid of those pixels.
-    3. Sort boundary pixels by angle from the centroid so they form an ordered
-       polygon.
-    4. Apply Douglas-Peucker simplification to reduce point count.
+    Uses OpenCV findContours for proper contour tracing, then simplifies
+    with approxPolyDP.  Returns the largest contour.
     """
+    import cv2
+
     if mask.ndim != 2:
         raise ValueError("mask must be 2-D")
 
-    padded = np.pad(mask.astype(np.uint8), 1, mode="constant", constant_values=0)
+    binary = mask.astype(np.uint8)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # A boundary pixel has at least one 4-connected neighbour that is 0.
-    boundary = (
-        (padded[1:-1, 1:-1] == 1)
-        & (
-            (padded[:-2, 1:-1] == 0)
-            | (padded[2:, 1:-1] == 0)
-            | (padded[1:-1, :-2] == 0)
-            | (padded[1:-1, 2:] == 0)
-        )
-    )
-
-    ys, xs = np.where(boundary)
-    if len(xs) == 0:
+    if not contours:
         return []
 
-    cx, cy = xs.mean(), ys.mean()
-    angles = np.arctan2(ys - cy, xs - cx)
-    order = np.argsort(angles)
-    points = np.column_stack([xs[order], ys[order]])
+    # Take the largest contour by area
+    largest = max(contours, key=cv2.contourArea)
 
-    simplified = _douglas_peucker(points, simplify_tolerance)
-    return simplified.tolist()
+    # Simplify
+    epsilon = simplify_tolerance
+    approx = cv2.approxPolyDP(largest, epsilon, closed=True)
 
-
-def _douglas_peucker(points: np.ndarray, epsilon: float) -> np.ndarray:
-    """Simplify a polyline using the Douglas-Peucker algorithm."""
-    if len(points) <= 2:
-        return points
-
-    # Find the point with the maximum distance from the line between first and last.
-    start, end = points[0].astype(float), points[-1].astype(float)
-    line_vec = end - start
-    line_len = np.linalg.norm(line_vec)
-
-    if line_len == 0:
-        dists = np.linalg.norm(points - start, axis=1)
-    else:
-        line_unit = line_vec / line_len
-        diff = points.astype(float) - start
-        proj = np.dot(diff, line_unit)
-        proj = np.clip(proj, 0, line_len)
-        closest = start + np.outer(proj, line_unit)
-        dists = np.linalg.norm(points - closest, axis=1)
-
-    max_idx = int(np.argmax(dists))
-    max_dist = dists[max_idx]
-
-    if max_dist > epsilon:
-        left = _douglas_peucker(points[: max_idx + 1], epsilon)
-        right = _douglas_peucker(points[max_idx:], epsilon)
-        return np.vstack([left[:-1], right])
-    else:
-        return np.array([points[0], points[-1]])
+    # Convert from OpenCV's (N, 1, 2) shape to [[x, y], ...]
+    return approx.reshape(-1, 2).tolist()
 
 
 # ---------------------------------------------------------------------------

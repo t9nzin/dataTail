@@ -156,42 +156,72 @@ async def segment_box(
 @router.post("/everything")
 async def segment_everything(
     image: UploadFile = File(...),
-    points_per_side: int = Form(32),
+    points_per_side: int = Form(16),
 ):
     """Run automatic mask generation over the entire image.
 
     Returns a list of segments, each with ``area``, ``bbox``, ``stability_score``,
     ``polygon``, and ``rle``.
     """
-    from segment_anything import SamAutomaticMaskGenerator  # type: ignore
+    from segment_anything import SamAutomaticMaskGenerator, SamPredictor  # type: ignore
 
     pil_img, np_img = await image_from_upload(image)
 
+    # SamAutomaticMaskGenerator internally uses float64 tensors which MPS
+    # doesn't support.  Move the model to CPU for this operation and create
+    # a fresh predictor so the predictor.device is also CPU.
     sam_model = get_sam_model()
-    generator = SamAutomaticMaskGenerator(
-        model=sam_model,
-        points_per_side=points_per_side,
-        pred_iou_thresh=0.86,
-        stability_score_thresh=0.92,
-        min_mask_region_area=100,
-    )
+    original_device = next(sam_model.parameters()).device
+    use_cpu = original_device.type == "mps"
+    if use_cpu:
+        sam_model.to("cpu")
 
-    masks_data: list[dict] = generator.generate(np_img)
+    try:
+        img_h, img_w = np_img.shape[:2]
+        img_area = img_h * img_w
+
+        generator = SamAutomaticMaskGenerator(
+            model=sam_model,
+            points_per_side=points_per_side,
+            pred_iou_thresh=0.94,
+            stability_score_thresh=0.96,
+            min_mask_region_area=int(img_area * 0.02),
+            box_nms_thresh=0.4,
+            crop_n_layers=0,
+        )
+        # Override the internal predictor so its device is also CPU.
+        if use_cpu:
+            generator.predictor = SamPredictor(sam_model)
+
+        masks_data: list[dict] = generator.generate(np_img)
+    finally:
+        if use_cpu:
+            sam_model.to(original_device)
+
+    # Filter: drop masks smaller than 2% of the image area
+    min_area = max(500, img_area * 0.02)
 
     results = []
     for entry in masks_data:
+        if entry["area"] < min_area:
+            continue
         binary = entry["segmentation"].astype(np.uint8)
+        polygon = mask_to_polygon(binary)
+        if len(polygon) < 3:
+            continue
         results.append(
             {
                 "area": int(entry["area"]),
                 "bbox": [int(v) for v in entry["bbox"]],  # [x, y, w, h]
                 "stability_score": float(entry["stability_score"]),
                 "predicted_iou": float(entry["predicted_iou"]),
-                "polygon": mask_to_polygon(binary),
+                "polygon": polygon,
                 "rle": mask_to_rle(binary),
             }
         )
 
+    # Sort by area descending so the most prominent objects come first
+    results.sort(key=lambda r: r["area"], reverse=True)
     return results
 
 

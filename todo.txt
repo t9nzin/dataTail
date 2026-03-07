@@ -1,0 +1,50 @@
+TODO:
+
+[] Click-to-Segment 
+- User clicks a point on an object -> MobileSAM generates a pixel-perfect mask
+
+[] Segment Everything 
+- Click one button: SAM auto-segments every object in the image
+- User then just assigns labels to pre-cut segments 
+- Turns annotation from "draw and label" to just label 
+
+[] Natural Language Annotation Agent
+User flow:                                                                                 │                                                                         
+  │ User types: "annotate all cars"                                                            │                                                                         
+  │   -> SAM segments everything (30-50 segments)                                              │                                                                         
+  │   -> CLIP scores each segment against "a photo of a car"                                   │                                                                         
+  │   -> Top matches (score > 0.25) become annotations labeled "car"                           │                                                                         
+  │   -> User reviews, accepts/rejects each suggestion                  
+
+[] Quality Review Agent
+
+Runs automated checks using CLIP + geometric analysis:                                     │                                  
+  │                                                                                            │                                  
+  │ a) Label-region consistency (CLIP)                                                         │                                  
+  │ - For each annotation, crop the region from the image                                      │                                  
+  │ - Compute CLIP similarity between cropped region and label text                            │                                  
+  │ - Flag low-confidence matches: "Annotation #12 labeled 'cat' has only 15% confidence —     │                                  
+  │ might be mislabeled"                                                                       │                                  
+  │ - Also compute similarity against ALL label classes to suggest corrections: "Did you mean  │                                  
+  │ 'dog' (87% confidence)?"                                                                   │                                  
+  │                                                                                            │                                  
+  │ b) Missing annotation detection                                                            │                                  
+  │ - Run SAM "segment everything" on the image                                                │                                  
+  │ - Compare SAM segments against existing annotations (IoU matching)                         │                                  
+  │ - Flag significant segments that have no corresponding annotation                          │                                  
+  │ - "Found 3 unlabeled regions in image #47 — possible missing annotations"                  │                                  
+  │                                                                                            │                                  
+  │ c) Geometric anomaly detection                                                             │                                  
+  │ - Bounding boxes with extreme aspect ratios                                                │                                  
+  │ - Annotations smaller than 1% or larger than 90% of image area                             │                                  
+  │ - Heavily overlapping annotations (IoU > 0.8 with different labels)                        │                                  
+  │ - Annotations clipped at image edges (might be incomplete)                                 │                                  
+  │                                                                                            │                                  
+  │ d) Cross-image consistency                                                                 │                                  
+  │ - CLIP-encode all annotated regions grouped by label                                       │                                  
+  │ - Find outliers: regions labeled "car" that have very different CLIP embeddings from other │                                  
+  │  "car" regions                                                                             │                                  
+  │ - "Annotation #34 labeled 'car' looks different from other 'car' annotations — review?"    │                                  
+  │                                                                                            │                                  
+  │ Output: a review queue sorted by severity, with explanations and "accept/fix/dismiss"      │                                  
+  │ actions.                                                

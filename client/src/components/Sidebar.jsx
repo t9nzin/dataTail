@@ -92,6 +92,29 @@ function AnnotationsPanel() {
     setAiResults(updated);
   }
 
+  async function handleAcceptAll() {
+    if (!currentImage || !currentProject) return;
+    try {
+      const batch = aiResults.map((s) => ({
+        image_id: currentImage.id,
+        project_id: currentProject.id,
+        label: s.label,
+        type: s.type || 'polygon',
+        data: s.data,
+        source: s.source || 'sam-auto',
+      }));
+      const created = await api.createAnnotationsBatch(batch);
+      for (const ann of created) addAnnotation(ann);
+      setAiResults([]);
+    } catch (err) {
+      console.error('Failed to accept all suggestions:', err);
+    }
+  }
+
+  function handleRejectAll() {
+    setAiResults([]);
+  }
+
   function getLabelColor(labelName) {
     const lc = labelClasses.find((l) => l.name === labelName);
     return lc?.color || '#888';
@@ -183,9 +206,42 @@ function AnnotationsPanel() {
                   letterSpacing: 1,
                   borderTop: '1px solid #4a9eff44',
                   background: '#4a9eff11',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                 }}
               >
-                AI Suggestions ({aiResults.length})
+                <span>AI Suggestions ({aiResults.length})</span>
+                <span style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    onClick={handleAcceptAll}
+                    style={{
+                      background: '#4aff4a33',
+                      border: '1px solid #4aff4a66',
+                      color: '#4aff4a',
+                      cursor: 'pointer',
+                      fontSize: 9,
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                    }}
+                  >
+                    Accept All
+                  </button>
+                  <button
+                    onClick={handleRejectAll}
+                    style={{
+                      background: '#ff4a4a33',
+                      border: '1px solid #ff4a4a66',
+                      color: '#ff4a4a',
+                      cursor: 'pointer',
+                      fontSize: 9,
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                    }}
+                  >
+                    Reject All
+                  </button>
+                </span>
               </div>
               {aiResults.map((suggestion, idx) => (
                 <div
@@ -211,9 +267,9 @@ function AnnotationsPanel() {
                   <span style={{ fontSize: 12, color: '#e0e0e0', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {suggestion.label || 'unlabeled'}
                   </span>
-                  {suggestion.confidence != null && (
+                  {(suggestion.confidence ?? suggestion.score) != null && (
                     <span style={{ fontSize: 9, color: '#888' }}>
-                      {Math.round(suggestion.confidence * 100)}%
+                      {Math.round((suggestion.confidence ?? suggestion.score) * 100)}%
                     </span>
                   )}
                   <button

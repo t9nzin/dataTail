@@ -1,0 +1,20 @@
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+ai-service/venv/
+ai-service/weights/
+
+# Data
+data/*.db
+data/*.db-shm
+data/*.db-wal
+uploads/
+
+# OS
+.DS_Store
+
+# Env
+.env
