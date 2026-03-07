@@ -134,8 +134,8 @@ export default function ProjectView() {
         {/* Center: Canvas + BottomBar stacked vertically, with Toolbar overlaid */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
           <AnnotationCanvas annotationsVisible={annotationsVisible} />
+          {/* BottomBar and Toolbar float over the canvas */}
           <BottomBar />
-          {/* Toolbar floats over the right edge */}
           <Toolbar onToggleChat={() => setChatOpen((v) => !v)} />
         </div>
       </div>

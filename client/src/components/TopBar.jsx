@@ -53,7 +53,6 @@ export default function TopBar({
   async function handleSave() {
     setSaveFlash(true);
     try {
-      // Persist all current annotations via batch update
       for (const ann of annotations) {
         if (ann.id && !String(ann.id).startsWith('temp-')) {
           await api.updateAnnotation(ann.id, {
@@ -71,13 +70,13 @@ export default function TopBar({
   return (
     <div
       style={{
-        height: 52,
+        height: 78,
         background: '#fff',
         borderBottom: '1px solid #e5e5e5',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 16px',
-        gap: 12,
+        padding: '0 24px',
+        gap: 18,
         flexShrink: 0,
         zIndex: 50,
         fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif',
@@ -88,9 +87,9 @@ export default function TopBar({
         onClick={() => navigate('/')}
         title="Back to Projects"
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 6,
+          width: 48,
+          height: 48,
+          borderRadius: 9,
           background: '#f5f5f5',
           border: '1px solid #e5e5e5',
           display: 'flex',
@@ -111,17 +110,17 @@ export default function TopBar({
           e.currentTarget.querySelector('svg').style.stroke = '#555';
         }}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
 
       {/* Breadcrumb + filename */}
-      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span
             style={{
-              fontSize: 12,
+              fontSize: 18,
               fontWeight: 600,
               color: '#888',
               textTransform: 'uppercase',
@@ -135,10 +134,10 @@ export default function TopBar({
           >
             {currentProject?.name || 'Project'}
           </span>
-          <span style={{ fontSize: 12, color: '#ccc', userSelect: 'none' }}>&gt;</span>
+          <span style={{ fontSize: 18, color: '#ccc', userSelect: 'none' }}>&gt;</span>
           <span
             style={{
-              fontSize: 12,
+              fontSize: 18,
               fontWeight: 600,
               color: '#6C5CE7',
               textTransform: 'uppercase',
@@ -150,14 +149,14 @@ export default function TopBar({
         </div>
         <div
           style={{
-            fontSize: 14,
-            color: '#1a1a1a',
+            fontSize: 18,
+            color: '#666',
             fontWeight: 400,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            maxWidth: 220,
-            marginTop: 1,
+            maxWidth: 330,
+            marginTop: 2,
           }}
         >
           {currentImage?.filename || 'No image selected'}
@@ -172,7 +171,7 @@ export default function TopBar({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: 12,
           position: 'absolute',
           left: '50%',
           transform: 'translateX(-50%)',
@@ -184,9 +183,9 @@ export default function TopBar({
           disabled={currentIndex <= 0}
           title="Previous image"
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 6,
+            width: 45,
+            height: 45,
+            borderRadius: 9,
             background: currentIndex <= 0 ? '#f9f9f9' : '#f5f5f5',
             border: '1px solid #e5e5e5',
             display: 'flex',
@@ -209,7 +208,7 @@ export default function TopBar({
             e.currentTarget.querySelector('svg').style.stroke = '#555';
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
@@ -217,10 +216,10 @@ export default function TopBar({
         {/* Counter */}
         <span
           style={{
-            fontSize: 15,
+            fontSize: 19,
             fontWeight: 500,
-            color: '#1a1a1a',
-            minWidth: 60,
+            color: '#666',
+            minWidth: 90,
             textAlign: 'center',
             userSelect: 'none',
           }}
@@ -234,9 +233,9 @@ export default function TopBar({
           disabled={currentIndex >= totalImages - 1}
           title="Next image"
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 6,
+            width: 45,
+            height: 45,
+            borderRadius: 9,
             background: currentIndex >= totalImages - 1 ? '#f9f9f9' : '#f5f5f5',
             border: '1px solid #e5e5e5',
             display: 'flex',
@@ -259,7 +258,7 @@ export default function TopBar({
             e.currentTarget.querySelector('svg').style.stroke = '#555';
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="9 6 15 12 9 18" />
           </svg>
         </button>
@@ -269,7 +268,7 @@ export default function TopBar({
       <div style={{ flex: 1 }} />
 
       {/* Right side controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
         {/* Connected users (overlapping avatars) */}
         <div style={{ display: 'flex', alignItems: 'center' }}>
           {connectedUsers
@@ -280,18 +279,18 @@ export default function TopBar({
                 key={user + idx}
                 title={user}
                 style={{
-                  width: 28,
-                  height: 28,
+                  width: 42,
+                  height: 42,
                   borderRadius: '50%',
                   background: getUserColor(user),
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 10,
+                  fontSize: 15,
                   fontWeight: 700,
                   color: '#fff',
-                  border: '2px solid #fff',
-                  marginLeft: idx > 0 ? -8 : 0,
+                  border: '3px solid #fff',
+                  marginLeft: idx > 0 ? -12 : 0,
                   zIndex: 10 - idx,
                   position: 'relative',
                 }}
@@ -303,7 +302,7 @@ export default function TopBar({
 
         {/* Separator */}
         {connectedUsers.filter((u) => u !== currentUser).length > 0 && (
-          <div style={{ width: 1, height: 20, background: '#e5e5e5' }} />
+          <div style={{ width: 1, height: 30, background: '#e5e5e5' }} />
         )}
 
         {/* Eye icon - toggle annotation visibility */}
@@ -311,9 +310,9 @@ export default function TopBar({
           onClick={() => onToggleAnnotationVisibility?.()}
           title={annotationsVisible ? 'Hide annotations' : 'Show annotations'}
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 6,
+            width: 48,
+            height: 48,
+            borderRadius: 9,
             background: 'transparent',
             border: 'none',
             display: 'flex',
@@ -327,12 +326,12 @@ export default function TopBar({
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           {annotationsVisible ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
           ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
               <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
               <line x1="1" y1="1" x2="23" y2="23" />
@@ -345,8 +344,8 @@ export default function TopBar({
           onClick={handleSave}
           title="Save annotations"
           style={{
-            width: 32,
-            height: 32,
+            width: 48,
+            height: 48,
             borderRadius: '50%',
             background: saveFlash ? '#5a4bd6' : '#6C5CE7',
             border: 'none',
@@ -355,12 +354,12 @@ export default function TopBar({
             justifyContent: 'center',
             cursor: 'pointer',
             transition: 'all 0.2s',
-            boxShadow: '0 1px 4px rgba(108, 92, 231, 0.3)',
+            boxShadow: '0 2px 6px rgba(108, 92, 231, 0.3)',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = '#5a4bd6'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = saveFlash ? '#5a4bd6' : '#6C5CE7'; }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </button>
@@ -371,9 +370,9 @@ export default function TopBar({
             onClick={() => setMoreOpen(!moreOpen)}
             title="More options"
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
+              width: 48,
+              height: 48,
+              borderRadius: 9,
               background: 'transparent',
               border: 'none',
               display: 'flex',
@@ -385,7 +384,7 @@ export default function TopBar({
             onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f5f5'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#555">
+            <svg width="27" height="27" viewBox="0 0 24 24" fill="#555">
               <circle cx="12" cy="5" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
               <circle cx="12" cy="19" r="1.5" />
@@ -410,12 +409,12 @@ export default function TopBar({
                   position: 'absolute',
                   top: '100%',
                   right: 0,
-                  marginTop: 6,
+                  marginTop: 9,
                   background: '#fff',
                   border: '1px solid #e5e5e5',
-                  borderRadius: 8,
-                  minWidth: 180,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                  borderRadius: 12,
+                  minWidth: 270,
+                  boxShadow: '0 6px 24px rgba(0,0,0,0.1)',
                   zIndex: 100,
                   overflow: 'hidden',
                 }}
@@ -423,9 +422,9 @@ export default function TopBar({
                 <div
                   onClick={() => { onOpenDashboard?.(); setMoreOpen(false); }}
                   style={{
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    color: '#1a1a1a',
+                    padding: '15px 24px',
+                    fontSize: 20,
+                    color: '#666',
                     cursor: 'pointer',
                     transition: 'background 0.1s',
                   }}
@@ -437,9 +436,9 @@ export default function TopBar({
                 <div
                   onClick={() => { onOpenReview?.(); setMoreOpen(false); }}
                   style={{
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    color: '#1a1a1a',
+                    padding: '15px 24px',
+                    fontSize: 20,
+                    color: '#666',
                     cursor: 'pointer',
                     borderTop: '1px solid #f0f0f0',
                     transition: 'background 0.1s',
@@ -452,9 +451,9 @@ export default function TopBar({
                 <div
                   onClick={() => { navigate('/'); setMoreOpen(false); }}
                   style={{
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    color: '#1a1a1a',
+                    padding: '15px 24px',
+                    fontSize: 20,
+                    color: '#666',
                     cursor: 'pointer',
                     borderTop: '1px solid #f0f0f0',
                     transition: 'background 0.1s',
