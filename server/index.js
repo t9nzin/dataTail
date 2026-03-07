@@ -41,6 +41,11 @@ app.use(cors({
 
 app.options('*', cors());
 
+app.use((req, res, next) => {
+  console.log("HEADERS:", req.headers);
+  next();
+});
+
 // Body parsing
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
