@@ -284,7 +284,7 @@ const aiTools = [
   { id: 'box-segment', title: 'Box Segment (B)', key: 'b', Icon: BoxSegmentIcon },
 ];
 
-export default function Toolbar({ uiScale = 1, onToggleChat }) {
+export default function Toolbar({ uiScale = 1, onToggleChat, chatOpen: chatOpenProp = false }) {
   const activeTool = useStore((s) => s.activeTool);
   const setActiveTool = useStore((s) => s.setActiveTool);
   const currentImage = useStore((s) => s.currentImage);
@@ -295,7 +295,7 @@ export default function Toolbar({ uiScale = 1, onToggleChat }) {
   const removeAnnotation = useStore((s) => s.removeAnnotation);
   const setSelectedAnnotation = useStore((s) => s.setSelectedAnnotation);
 
-  const [chatOpen, setChatOpen] = useState(false);
+  const chatOpen = chatOpenProp;
   const [prevTool, setPrevTool] = useState(null);
   const [hoveredTool, setHoveredTool] = useState(null);
   const [hoveredRect, setHoveredRect] = useState(null);
@@ -347,10 +347,8 @@ export default function Toolbar({ uiScale = 1, onToggleChat }) {
   // ── Toggle chat ────────────────────────────────────────────────────────
 
   const handleToggleChat = useCallback(() => {
-    const next = !chatOpen;
-    setChatOpen(next);
-    if (onToggleChat) onToggleChat(next);
-  }, [chatOpen, onToggleChat]);
+    if (onToggleChat) onToggleChat();
+  }, [onToggleChat]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
 

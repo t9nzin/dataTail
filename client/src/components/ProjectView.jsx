@@ -157,12 +157,11 @@ export default function ProjectView() {
           <AnnotationCanvas annotationsVisible={annotationsVisible} />
           {/* BottomBar and Toolbar float over the canvas */}
           <BottomBar uiScale={uiScale} />
-          <Toolbar uiScale={uiScale} onToggleChat={() => setChatOpen((v) => !v)} />
+          <Toolbar uiScale={uiScale} chatOpen={chatOpen} onToggleChat={() => setChatOpen((v) => !v)} />
+          {/* ChatPanel floats to the left of the toolbar */}
+          {chatOpen && <ChatPanel uiScale={uiScale} onClose={() => setChatOpen(false)} />}
         </div>
       </div>
-
-      {/* ChatPanel at the very bottom (collapsible) */}
-      {chatOpen && <ChatPanel uiScale={uiScale} />}
 
       {/* DashboardPanel and ReviewPanel as modals (overlays) */}
       <DashboardPanel

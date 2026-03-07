@@ -59,6 +59,7 @@ export const useStore = create((set, get) => ({
   // Chat messages (NL annotation)
   chatMessages: [],
   addChatMessage: (msg) => set(s => ({ chatMessages: [...s.chatMessages, msg] })),
+  removeChatMessage: (id) => set(s => ({ chatMessages: s.chatMessages.filter(m => m.id !== id) })),
   clearChat: () => set({ chatMessages: [], chatHistory: [] }),
 
   // Ollama conversation history (for multi-turn agent chat)

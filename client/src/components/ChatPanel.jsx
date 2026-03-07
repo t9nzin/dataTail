@@ -2,17 +2,40 @@ import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import * as api from '../api';
 
-export default function ChatPanel({ uiScale = 1 }) {
+const ACCENT = '#6C5CE7';
+
+function BouncingDots() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 14px' }}>
+      <style>{`
+        @keyframes chatBounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40% { transform: translateY(-5px); opacity: 1; }
+        }
+      `}</style>
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: ACCENT,
+            animation: `chatBounce 1.2s ease-in-out ${i * 0.15}s infinite`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+export default function ChatPanel({ uiScale = 1, onClose }) {
   const [input, setInput] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-  const [panelHeight, setPanelHeight] = useState(250);
-  const [isResizing, setIsResizing] = useState(false);
   const messagesEndRef = useRef(null);
-  const resizeStartRef = useRef(null);
-  const panelRef = useRef(null);
 
   const currentImage = useStore((s) => s.currentImage);
   const addChatMessage = useStore((s) => s.addChatMessage);
+  const removeChatMessage = useStore((s) => s.removeChatMessage);
   const chatMessages = useStore((s) => s.chatMessages);
   const currentProject = useStore((s) => s.currentProject);
   const activeLabel = useStore((s) => s.activeLabel);
@@ -27,30 +50,6 @@ export default function ChatPanel({ uiScale = 1 }) {
     }
   }, [chatMessages]);
 
-  useEffect(() => {
-    if (!isResizing) return;
-
-    function handleMouseMove(e) {
-      if (resizeStartRef.current != null) {
-        const delta = resizeStartRef.current - e.clientY;
-        setPanelHeight((h) => Math.max(120, Math.min(600, h + delta)));
-        resizeStartRef.current = e.clientY;
-      }
-    }
-
-    function handleMouseUp() {
-      setIsResizing(false);
-      resizeStartRef.current = null;
-    }
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing]);
-
   async function handleSend() {
     const command = input.trim();
     if (!command || !currentImage) return;
@@ -64,10 +63,11 @@ export default function ChatPanel({ uiScale = 1 }) {
       timestamp: new Date().toISOString(),
     });
 
+    const loadingId = Date.now() + 1;
     addChatMessage({
-      id: Date.now() + 1,
+      id: loadingId,
       role: 'system',
-      text: 'Processing...',
+      text: '',
       isLoading: true,
       timestamp: new Date().toISOString(),
     });
@@ -80,15 +80,15 @@ export default function ChatPanel({ uiScale = 1 }) {
         chatHistory,
       );
 
+      removeChatMessage(loadingId);
+
       const resultAnnotations = result.annotations || [];
       const message = result.message || `Found ${resultAnnotations.length} result(s)`;
 
-      // Update conversation history for multi-turn
       if (result.history) {
         setChatHistory(result.history);
       }
 
-      // If there were DB actions (remove/relabel), refresh annotations
       if (result.actions && result.actions.length > 0) {
         try {
           const fresh = await api.fetchAnnotations(currentImage.id);
@@ -98,7 +98,6 @@ export default function ChatPanel({ uiScale = 1 }) {
         }
       }
 
-      // Push annotation candidates to canvas as AI suggestions (same UX as segment everything)
       if (resultAnnotations.length > 0) {
         const suggestions = resultAnnotations.map((ann) => ({
           data: ann.polygon,
@@ -113,7 +112,6 @@ export default function ChatPanel({ uiScale = 1 }) {
         setAiResults(suggestions);
       }
 
-      // Remove the loading message by adding a completed one
       addChatMessage({
         id: Date.now() + 2,
         role: 'assistant',
@@ -121,6 +119,7 @@ export default function ChatPanel({ uiScale = 1 }) {
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
+      removeChatMessage(loadingId);
       addChatMessage({
         id: Date.now() + 2,
         role: 'assistant',
@@ -131,91 +130,65 @@ export default function ChatPanel({ uiScale = 1 }) {
     }
   }
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        style={{
-          position: 'fixed',
-          bottom: 16,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          padding: '8px 20px',
-          background: '#4a9eff',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 20,
-          cursor: 'pointer',
-          fontSize: 13,
-          fontWeight: 600,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          zIndex: 100,
-        }}
-      >
-        Chat Assistant
-      </button>
-    );
-  }
-
   return (
     <div
-      ref={panelRef}
       style={{
-        height: panelHeight,
-        background: '#1e1e1e',
-        borderTop: '1px solid #3d3d3d',
+        position: 'absolute',
+        right: 117,
+        bottom: 18,
+        width: 340,
+        height: 420,
+        background: '#fff',
+        borderRadius: 20,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+        border: '1px solid #e8e8e8',
         display: 'flex',
         flexDirection: 'column',
-        flexShrink: 0,
+        overflow: 'hidden',
+        zIndex: 20,
         zoom: uiScale,
       }}
     >
-      {/* Resize handle */}
-      <div
-        onMouseDown={(e) => {
-          setIsResizing(true);
-          resizeStartRef.current = e.clientY;
-        }}
-        style={{
-          height: 4,
-          background: 'transparent',
-          cursor: 'ns-resize',
-          flexShrink: 0,
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#4a9eff')}
-        onMouseLeave={(e) => {
-          if (!isResizing) e.currentTarget.style.background = 'transparent';
-        }}
-      />
-
       {/* Header */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '4px 12px',
-          background: '#2a2a2a',
-          borderBottom: '1px solid #3d3d3d',
+          padding: '14px 18px 12px',
+          borderBottom: '1px solid #f0f0f0',
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#ccc', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Chat Assistant
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a', letterSpacing: 0.2 }}>
+            AI Assistant
+          </span>
+        </div>
         <button
-          onClick={() => setIsOpen(false)}
+          onClick={onClose}
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#888',
             cursor: 'pointer',
-            fontSize: 16,
-            padding: '0 4px',
-            lineHeight: 1,
+            padding: 4,
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#aaa',
+            transition: 'background 0.15s, color 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f5f5'; e.currentTarget.style.color = '#666'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#aaa'; }}
         >
-          x
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
 
@@ -224,15 +197,15 @@ export default function ChatPanel({ uiScale = 1 }) {
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '8px 12px',
+          padding: '12px 16px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 6,
+          gap: 8,
         }}
       >
         {chatMessages.length === 0 && (
-          <div style={{ color: '#666', fontSize: 12, textAlign: 'center', marginTop: 24 }}>
-            Try commands like: "find all cars", "label dogs in this image", "count objects"
+          <div style={{ color: '#aaa', fontSize: 12, textAlign: 'center', marginTop: 32, lineHeight: 1.6 }}>
+            Try: "find all cars", "label dogs",<br />"count objects"
           </div>
         )}
 
@@ -243,13 +216,14 @@ export default function ChatPanel({ uiScale = 1 }) {
                 key={msg.id}
                 style={{
                   alignSelf: 'flex-end',
-                  background: '#4a9eff',
+                  background: ACCENT,
                   color: '#fff',
-                  padding: '6px 12px',
-                  borderRadius: '12px 12px 2px 12px',
+                  padding: '8px 14px',
+                  borderRadius: '14px 14px 4px 14px',
                   fontSize: 13,
                   maxWidth: '80%',
                   wordBreak: 'break-word',
+                  lineHeight: 1.4,
                 }}
               >
                 {msg.text}
@@ -258,25 +232,22 @@ export default function ChatPanel({ uiScale = 1 }) {
           }
 
           if (msg.role === 'system') {
+            if (msg.isLoading) {
+              return (
+                <div key={msg.id} style={{ alignSelf: 'flex-start' }}>
+                  <div style={{ background: '#f5f5f7', borderRadius: '14px 14px 14px 4px', display: 'inline-block' }}>
+                    <BouncingDots />
+                  </div>
+                </div>
+              );
+            }
             return (
-              <div
-                key={msg.id}
-                style={{
-                  alignSelf: 'center',
-                  color: msg.isLoading ? '#4a9eff' : '#888',
-                  fontSize: 11,
-                  fontStyle: 'italic',
-                }}
-              >
-                {msg.isLoading && (
-                  <span style={{ marginRight: 6 }}>...</span>
-                )}
+              <div key={msg.id} style={{ alignSelf: 'center', color: '#999', fontSize: 11, fontStyle: 'italic' }}>
                 {msg.text}
               </div>
             );
           }
 
-          // Assistant messages
           return (
             <div
               key={msg.id}
@@ -287,13 +258,14 @@ export default function ChatPanel({ uiScale = 1 }) {
             >
               <div
                 style={{
-                  background: msg.isError ? '#ff4a4a22' : '#2d2d2d',
-                  color: msg.isError ? '#ff4a4a' : '#e0e0e0',
-                  padding: '6px 12px',
-                  borderRadius: '12px 12px 12px 2px',
+                  background: msg.isError ? '#fdf0f0' : '#f5f5f7',
+                  color: msg.isError ? '#e74c3c' : '#333',
+                  padding: '8px 14px',
+                  borderRadius: '14px 14px 14px 4px',
                   fontSize: 13,
                   wordBreak: 'break-word',
-                  border: msg.isError ? '1px solid #ff4a4a44' : 'none',
+                  lineHeight: 1.4,
+                  border: msg.isError ? '1px solid #f5c6c6' : 'none',
                 }}
               >
                 {msg.text}
@@ -309,8 +281,8 @@ export default function ChatPanel({ uiScale = 1 }) {
         style={{
           display: 'flex',
           gap: 8,
-          padding: '8px 12px',
-          borderTop: '1px solid #3d3d3d',
+          padding: '12px 14px',
+          borderTop: '1px solid #f0f0f0',
           flexShrink: 0,
         }}
       >
@@ -323,34 +295,43 @@ export default function ChatPanel({ uiScale = 1 }) {
               handleSend();
             }
           }}
-          placeholder={currentImage ? 'e.g. "find all cars", "label dogs"...' : 'Select an image first'}
+          placeholder={currentImage ? '"find all cars"...' : 'Select an image first'}
           disabled={!currentImage}
           style={{
             flex: 1,
-            padding: '8px 12px',
-            background: '#2d2d2d',
-            border: '1px solid #3d3d3d',
-            borderRadius: 6,
-            color: '#e0e0e0',
+            padding: '9px 12px',
+            background: '#f5f5f7',
+            border: '1px solid #e8e8e8',
+            borderRadius: 10,
+            color: '#333',
             fontSize: 13,
             outline: 'none',
+            transition: 'border-color 0.15s',
           }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = ACCENT; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = '#e8e8e8'; }}
         />
         <button
           onClick={handleSend}
           disabled={!input.trim() || !currentImage}
           style={{
-            padding: '8px 16px',
-            background: input.trim() && currentImage ? '#4a9eff' : '#3d3d3d',
-            color: input.trim() && currentImage ? '#fff' : '#666',
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: input.trim() && currentImage ? ACCENT : '#e8e8e8',
+            color: input.trim() && currentImage ? '#fff' : '#bbb',
             border: 'none',
-            borderRadius: 6,
+            borderRadius: 10,
             cursor: input.trim() && currentImage ? 'pointer' : 'default',
-            fontSize: 13,
-            fontWeight: 600,
+            flexShrink: 0,
+            transition: 'background 0.15s',
           }}
         >
-          Send
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+          </svg>
         </button>
       </div>
     </div>

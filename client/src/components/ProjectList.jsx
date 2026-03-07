@@ -311,23 +311,7 @@ function ProjectCard({ project, onClick }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Type badge */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: '#27ae60',
-                background: 'rgba(39, 174, 96, 0.08)',
-                border: '1px solid rgba(39, 174, 96, 0.2)',
-                padding: '2px 10px',
-                borderRadius: 4,
-                textTransform: 'uppercase',
-                letterSpacing: 0.8,
-              }}
-            >
-              {(project.annotation_count ?? 0) > 0 ? 'Annotated' : 'New'}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 4 }}>
             {/* User avatar */}
             <div
               style={{

@@ -1,8 +1,12 @@
 TODO: 
 ---
 
-
-
+[] WL #2: Point to click AI feature 
+[] WL #1: Dataset annotation QA agent 
+[X] NL chatbot UI ugly - fix 
+[] Dataset health monitoring 
+[] (tailnet identity) batching: Assign dataset annotation tasks by tailnet user/device
+[] download annotated datasets 
 
 
 
