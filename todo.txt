@@ -1,4 +1,15 @@
 TODO:
+---
+CORE STUFF: 
+
+1. segment everything generated polygons currently dont show up in layers or in labels 
+2. panning got removed with ui update, maybe add back with the select rather than making it its own thing 
+3. add back sidebar that lets you approve / reject segment everything or generated polygons in general 
+4. be able to easily change the class of labels under layers (rename to annotations)
+5. be able to click the green checkmark, red x and have it accept or reject a generated annotation  
+   ^^ be able to click on generated annotations to delete them 
+
+AI FEATURES: 
 
 [] Click-to-Segment 
 - User clicks a point on an object -> MobileSAM generates a pixel-perfect mask
@@ -7,6 +18,7 @@ TODO:
 - Click one button: SAM auto-segments every object in the image
 - User then just assigns labels to pre-cut segments 
 - Turns annotation from "draw and label" to just label 
+
 
 [] Natural Language Annotation Agent
 User flow:                                                                                 │                                                                         
