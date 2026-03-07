@@ -38,6 +38,12 @@ const ToolIcon = ({ id }) => {
           <polygon points="12,3 21,9 18,20 6,20 3,9" />
         </svg>
       );
+    case 'bbox':
+      return (
+        <svg {...s} viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="1" />
+        </svg>
+      );
     case 'pan':
       return (
         <svg {...s} viewBox="0 0 24 24">
@@ -52,6 +58,7 @@ const ToolIcon = ({ id }) => {
 const tools = [
   { id: 'select', title: 'Select (V)', key: 'v' },
   { id: 'polygon', title: 'Polygon (P)', key: 'p' },
+  { id: 'bbox', title: 'Bounding Box (R)', key: 'r' },
   { id: 'click-segment', title: 'Click Segment (C)', key: 'c' },
   { id: 'box-segment', title: 'Box Segment (B)', key: 'b' },
   { id: 'pan', title: 'Pan (Space)', key: ' ' },

@@ -699,6 +699,29 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
     [currentImage?.id, currentImage?.project_id, activeLabel, addAnnotation, onAnnotationCreated]
   );
 
+  const finishBbox = useCallback(
+    async (box) => {
+      if (!currentImage?.id) return;
+      const newAnn = {
+        image_id: currentImage.id,
+        project_id: currentImage.project_id,
+        label: activeLabel?.name || null,
+        type: 'bbox',
+        data: box,
+        source: 'manual',
+      };
+      try {
+        const saved = await api.createAnnotation(newAnn);
+        addAnnotation(saved);
+        onAnnotationCreated?.(saved);
+      } catch (err) {
+        console.error('Failed to save bbox:', err);
+        addAnnotation({ ...newAnn, id: 'temp-' + Date.now() });
+      }
+    },
+    [currentImage?.id, currentImage?.project_id, activeLabel, addAnnotation, onAnnotationCreated]
+  );
+
   // -----------------------------------------------------------------------
   // Mouse handlers
   // -----------------------------------------------------------------------
@@ -784,7 +807,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
           const newPoints = [...segPoints, { x: Math.round(ix), y: Math.round(iy), label: 1 }];
           setSegPoints(newPoints);
           runClickSegment(newPoints);
-        } else if (activeTool === 'box-segment') {
+        } else if (activeTool === 'bbox' || activeTool === 'box-segment') {
           boxDrawing.current = { x1: ix, y1: iy, x2: ix, y2: iy };
           isDragging.current = true;
         }
@@ -856,8 +879,8 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
         return;
       }
 
-      // Box-segment: update drawing rectangle
-      if (isDragging.current && activeTool === 'box-segment' && boxDrawing.current) {
+      // Box drawing: update rectangle (both bbox and box-segment tools)
+      if (isDragging.current && (activeTool === 'bbox' || activeTool === 'box-segment') && boxDrawing.current) {
         boxDrawing.current = {
           ...boxDrawing.current,
           x2: ix,
@@ -893,19 +916,21 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
         return;
       }
 
-      if (isDragging.current && activeTool === 'box-segment' && boxDrawing.current) {
+      if (isDragging.current && (activeTool === 'bbox' || activeTool === 'box-segment') && boxDrawing.current) {
         isDragging.current = false;
         const b = boxDrawing.current;
-        // Normalize coordinates
         const box = {
           x1: Math.round(Math.min(b.x1, b.x2)),
           y1: Math.round(Math.min(b.y1, b.y2)),
           x2: Math.round(Math.max(b.x1, b.x2)),
           y2: Math.round(Math.max(b.y1, b.y2)),
         };
-        // Only call API if box has meaningful size
         if (box.x2 - box.x1 > 2 && box.y2 - box.y1 > 2) {
-          runBoxSegment(box);
+          if (activeTool === 'bbox') {
+            finishBbox(box);
+          } else {
+            runBoxSegment(box);
+          }
         }
         boxDrawing.current = null;
         return;
@@ -922,7 +947,7 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
 
       isDragging.current = false;
     },
-    [activeTool, selectedAnnotation, onAnnotationCreated]
+    [activeTool, selectedAnnotation, onAnnotationCreated, finishBbox]
   );
 
   // --- Mouse Wheel (Zoom) ---
@@ -1089,6 +1114,8 @@ export default function AnnotationCanvas({ onAnnotationCreated }) {
       case 'select':
         return 'default';
       case 'click-segment':
+        return 'crosshair';
+      case 'bbox':
         return 'crosshair';
       case 'box-segment':
         return 'crosshair';
