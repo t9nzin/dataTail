@@ -1,0 +1,60 @@
+                                                                                                                                                                          
+⏺ Here's the complete picture of what was built and how the flow works:                                                                                                                               
+                                                                                                                                                                                                      
+  ---                                                                                                                                                                                                 
+  What was created
+                                                                                                                                                                                                      
+  tailscale-admin/
+    service/           ← TypeScript Express on port 4000 (loopback only)
+      src/
+        tail_admin.ts  ← fixed from tailscale_stuff (listDevices returns data, removeDevice throws on failure, uses Node 18 global fetch)
+        main.ts        ← admin-gated routes + /internal/check-admin for server-to-service calls
+      package.json / tsconfig.json / .env.example
+    ui/                ← Vite React admin panel on port 5174
+      src/
+        App.jsx        ← checks /api/me, shows access denied or panel
+        api.js         ← calls /api/tailnet/* on main server
+        components/
+          DeviceList.jsx   ← list/remove tailnet devices
+          UserGroups.jsx   ← manage ACL group members, revoke users
+          ACLViewer.jsx    ← read-only ACL JSON view
+
+  server/routes/tailnet.js  ← NEW: admin-gated proxy to the service
+  server/index.js            ← MODIFIED: added /api/me + mounted /api/tailnet
+
+  ---
+  How the Tailscale flow works
+
+  User browser (port 5174)
+    │
+    ├─ GET /api/me
+    │     │
+    │     └─ main server (3000)
+    │           └─ GET http://127.0.0.1:4000/internal/check-admin/:user
+    │                 └─ service checks Tailscale ACL group:admins
+    │                 └─ returns { user, isAdmin }
+    │
+    │   If not admin → App shows "Access Denied"
+    │   If tailscale service down → shows "Service Offline"
+    │
+    └─ GET/POST/DELETE /api/tailnet/*
+          │
+          └─ main server (3000)  →  server/routes/tailnet.js
+                │
+                ├─ requireAdmin(): calls /internal/check-admin again (fail closed)
+                │
+                └─ proxy() → http://127.0.0.1:4000/<route>
+                      │  (forwards tailscale-user-login header)
+                      │
+                      └─ service also enforces requireAdmin() itself (defense in depth)
+                            └─ calls Tailscale API (api.tailscale.com)
+
+  Admin check is double-enforced: once in the main server before proxying, once in the service itself. If the service is unreachable at any point, the request fails closed with a 403 or 502.
+
+  To get started:
+  1. Copy tailscale-admin/service/.env.example → .env and fill in TS_NET + TS_KEY
+  2. cd tailscale-admin/service && npm install && npm run dev
+  3. cd tailscale-admin/ui && npm install && npm run dev
+  4. Open http://localhost:5174 — you'll need to be in group:admins in your Tailscale ACL
+
+
