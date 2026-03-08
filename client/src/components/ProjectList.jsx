@@ -509,6 +509,154 @@ function NewDatasetCard({ onClick }) {
   );
 }
 
+// ── User Profile ────────────────────────────────────────────────────────────
+
+function getInitials(identity) {
+  if (identity.displayName) {
+    const parts = identity.displayName.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  if (identity.login && identity.login !== 'local-user') {
+    // email-like: take first letter of local part
+    const local = identity.login.split('@')[0];
+    const parts = local.split(/[._-]+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return local.slice(0, 2).toUpperCase();
+  }
+  return 'LU';
+}
+
+function UserProfile() {
+  const identity = useStore((s) => s.userIdentity);
+  const initials = getInitials(identity);
+  const name = identity.displayName || (identity.login !== 'local-user' ? identity.login : 'Local User');
+  const subtitle = identity.displayName && identity.login !== 'local-user'
+    ? identity.login
+    : identity.tailnet || null;
+
+  const [hovered, setHovered] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const nameRef = useRef(null);
+  const subtitleRef = useRef(null);
+
+  useEffect(() => {
+    const nameEl = nameRef.current;
+    const subEl = subtitleRef.current;
+    const truncated =
+      (nameEl && nameEl.scrollWidth > nameEl.clientWidth) ||
+      (subEl && subEl.scrollWidth > subEl.clientWidth);
+    setIsTruncated(truncated);
+  }, [name, subtitle]);
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '16px 20px',
+        borderTop: `1px solid ${BORDER}`,
+        position: 'relative',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Tooltip bubble */}
+      {hovered && isTruncated && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: 16,
+          marginBottom: 8,
+          background: '#1a1a1a',
+          color: '#f0f0f0',
+          padding: '10px 14px',
+          borderRadius: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          fontSize: 12,
+          lineHeight: 1.5,
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          pointerEvents: 'none',
+          animation: 'profileTooltipIn 0.15s ease-out',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{name}</div>
+          {subtitle && (
+            <div style={{ color: '#aaa', marginTop: 2 }}>{subtitle}</div>
+          )}
+          {/* Arrow */}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 20,
+            width: 0,
+            height: 0,
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '6px solid #1a1a1a',
+          }} />
+        </div>
+      )}
+
+      {identity.profilePicUrl ? (
+        <img
+          src={identity.profilePicUrl}
+          alt={name}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            objectFit: 'cover',
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: ACCENT,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#fff',
+            flexShrink: 0,
+          }}
+        >
+          {initials}
+        </div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <div ref={nameRef} style={{
+          fontSize: 14,
+          fontWeight: 600,
+          color: TEXT_PRIMARY,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {name}
+        </div>
+        {subtitle && (
+          <div ref={subtitleRef} style={{
+            fontSize: 11,
+            color: TEXT_SECONDARY,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {subtitle}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProjectList() {
@@ -728,36 +876,7 @@ export default function ProjectList() {
         </div>
 
         {/* Bottom: User */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '16px 20px',
-            borderTop: `1px solid ${BORDER}`,
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: ACCENT,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
-            }}
-          >
-            LU
-          </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT_PRIMARY }}>Local User</div>
-          </div>
-        </div>
+        <UserProfile />
       </aside>
 
       {/* ── Main Content ────────────────────────────────────────── */}

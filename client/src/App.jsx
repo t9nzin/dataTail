@@ -1,7 +1,9 @@
-import { Component } from 'react';
+import { Component, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import ProjectList from './components/ProjectList';
 import ProjectView from './components/ProjectView';
+import { useStore } from './store';
+import * as api from './api';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -34,7 +36,49 @@ class ErrorBoundary extends Component {
   }
 }
 
+function LoadingScreen() {
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: '#f4f5f7',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <svg width="40" height="40" viewBox="0 0 36 36" fill="none" style={{ marginBottom: 16 }}>
+          <rect width="36" height="36" rx="10" fill="#6C5CE7" />
+          <path d="M18 8l-8 14h5v6l8-14h-5v-6z" fill="white" opacity="0.9" />
+        </svg>
+        <div style={{
+          fontSize: 13,
+          color: '#888',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        }}>
+          Loading...
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const setUserIdentity = useStore((s) => s.setUserIdentity);
+  const setIdentityReady = useStore((s) => s.setIdentityReady);
+  const identityReady = useStore((s) => s.identityReady);
+
+  useEffect(() => {
+    api.fetchMe()
+      .then((me) => setUserIdentity(me))
+      .catch(() => setIdentityReady(true));
+  }, []);
+
+  if (!identityReady) {
+    return <LoadingScreen />;
+  }
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
