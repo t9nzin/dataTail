@@ -1,0 +1,42 @@
+services:
+  ai-service:
+    build: ./ai-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-service:/app
+
+  backend:
+    build: ./server
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server:/app
+      # - /app/node_modules  # speeds up rebuilds
+
+  frontend:
+    build: ./client
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      # - /app/node_modules
+    environment:
+      - VITE_BACKEND_URL=http://backend:3000
+      - VITE_AI_URL=http://ai-service:8000
+
+  admin-service:
+    build: ./tailscale-admin/service
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./tailscale-admin/service:/app
+      # - /app/node_modules
+
+  admin-ui:
+    build: ./tailscale-admin/ui
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./tailscale-admin/ui:/app
+      # - /app/node_modules

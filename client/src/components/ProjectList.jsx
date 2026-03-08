@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import * as api from '../api';
+import ExportPanel from './ExportPanel';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -175,7 +176,6 @@ function ArrowRightIcon() {
 
 const NAV_ITEMS = [
   { id: 'projects', label: 'Projects', Icon: NavProjectsIcon },
-  { id: 'datasets', label: 'Datasets', Icon: NavDatasetsIcon },
   { id: 'team', label: 'Team', Icon: NavTeamIcon },
   { id: 'settings', label: 'Settings', Icon: NavSettingsIcon },
 ];
@@ -241,7 +241,7 @@ function StatCard({ icon, label, value, tintBg }) {
 
 // ── Project Card ─────────────────────────────────────────────────────────────
 
-function ProjectCard({ project, onClick }) {
+function ProjectCard({ project, onClick, onExport }) {
   const pct = project.image_count > 0
     ? Math.round(((project.done_count ?? 0) / project.image_count) * 100)
     : 0;
@@ -423,6 +423,7 @@ function ProjectCard({ project, onClick }) {
       {/* Action button */}
       <div style={{ padding: '16px 24px 20px' }}>
         <div
+          onClick={isDone ? (e) => { e.stopPropagation(); onExport?.(project); } : undefined}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -673,7 +674,18 @@ function UserProfile() {
 export default function ProjectList() {
   const projects = useStore((s) => s.projects);
   const setProjects = useStore((s) => s.setProjects);
+  const setCurrentProject = useStore((s) => s.setCurrentProject);
+  const setCurrentImage = useStore((s) => s.setCurrentImage);
+  const setImages = useStore((s) => s.setImages);
   const navigate = useNavigate();
+  const [showExport, setShowExport] = useState(false);
+
+  function openProject(projectId) {
+    // Clear stale image state before navigation so ProjectView's first render is clean
+    setCurrentImage(null);
+    setImages([]);
+    navigate(`/project/${projectId}`);
+  }
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -738,7 +750,7 @@ export default function ProjectList() {
       setProjects([project, ...projects]);
       resetModal();
       setShowModal(false);
-      navigate(`/project/${project.id}`);
+      openProject(project.id);
     } catch (err) {
       setError(err.message);
       setUploadStatus('');
@@ -1048,7 +1060,8 @@ export default function ProjectList() {
               <ProjectCard
                 key={project.id}
                 project={project}
-                onClick={() => navigate(`/project/${project.id}`)}
+                onClick={() => openProject(project.id)}
+                onExport={(proj) => { setCurrentProject(proj); setShowExport(true); }}
               />
             ))}
           </div>
@@ -1406,6 +1419,9 @@ export default function ProjectList() {
           </div>
         </div>
       )}
+
+      {/* Export Dataset Modal */}
+      <ExportPanel isOpen={showExport} onClose={() => setShowExport(false)} />
     </div>
   );
 }

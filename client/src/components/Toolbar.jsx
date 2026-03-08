@@ -294,6 +294,8 @@ export default function Toolbar({ uiScale = 1, onToggleChat, chatOpen: chatOpenP
   const selectedAnnotation = useStore((s) => s.selectedAnnotation);
   const removeAnnotation = useStore((s) => s.removeAnnotation);
   const setSelectedAnnotation = useStore((s) => s.setSelectedAnnotation);
+  const canUndo = useStore((s) => s.canUndo);
+  const canRedo = useStore((s) => s.canRedo);
 
   const chatOpen = chatOpenProp;
   const [prevTool, setPrevTool] = useState(null);
@@ -369,6 +371,8 @@ export default function Toolbar({ uiScale = 1, onToggleChat, chatOpen: chatOpenP
 
       if (e.key.toLowerCase() === 'e') { handleSegmentEverything(); return; }
       if (e.key.toLowerCase() === 't') { handleToggleChat(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); useStore.getState().redo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); useStore.getState().undo(); return; }
       if (e.key === 'Delete' || e.key === 'Backspace') { handleDelete(); return; }
 
       const drawTool = drawingTools.find((t) => t.key === e.key.toLowerCase());
@@ -550,19 +554,23 @@ export default function Toolbar({ uiScale = 1, onToggleChat, chatOpen: chatOpenP
         {/* Undo */}
         <ToolButton
           id="__undo"
-          title="Undo"
+          title="Undo (Ctrl+Z)"
           Icon={UndoIcon}
-          onClick={() => {/* undo not yet implemented */}}
+          onClick={() => useStore.getState().undo()}
           isActive={false}
+          disabled={!canUndo}
+          style={{ color: canUndo ? '#555' : '#ccc' }}
         />
 
         {/* Redo */}
         <ToolButton
           id="__redo"
-          title="Redo"
+          title="Redo (Ctrl+Shift+Z)"
           Icon={RedoIcon}
-          onClick={() => {/* redo not yet implemented */}}
+          onClick={() => useStore.getState().redo()}
           isActive={false}
+          disabled={!canRedo}
+          style={{ color: canRedo ? '#555' : '#ccc' }}
         />
 
         {divider}

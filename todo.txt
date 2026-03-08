@@ -1,8 +1,10 @@
 TODO: 
 ---
-[] WL #1: Dataset annotation QA agent 
-[] Dataset health monitoring (maybe - nice 2 have)
-[] (tailnet identity) batching: Assign dataset annotation tasks by tailnet user/device ()
+[] WL #1: Dataset annotation QA agent (by 10pm)
+[] (tailnet identity) batching: Assign dataset annotation tasks by tailnet user/device (by 12am)
+[] Film demo video 
+[] Write up devpost 
+[] Create pitch 
 
 DONEXTODO:
 ---

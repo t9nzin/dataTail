@@ -97,5 +97,16 @@ try {
 } catch {
   // Column already exists
 }
+// Migration: add bbox and predicted_label columns to review_issues table
+try {
+  db.exec(`ALTER TABLE review_issues ADD COLUMN bbox TEXT`);
+} catch {
+  // Column already exists
+}
+try {
+  db.exec(`ALTER TABLE review_issues ADD COLUMN predicted_label TEXT`);
+} catch {
+  // Column already exists
+}
 
 export default db;

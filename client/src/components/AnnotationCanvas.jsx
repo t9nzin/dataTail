@@ -12,6 +12,7 @@ const HANDLE_SIZE = 6; // half-size of selection corner handles (px)
 const CURSOR_BROADCAST_INTERVAL = 50; // ms
 const POINT_RADIUS = 5; // click-segment point indicator radius
 const DEFAULT_ANNOTATION_COLOR = '#888';
+const FALLBACK_PALETTE = ['#4a9eff', '#ff4a4a', '#4aff4a', '#ffff4a', '#ff4aff', '#4affff', '#ff8c00', '#8c00ff'];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,13 +37,25 @@ function hexToRgba(hex, alpha = 1) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Get color for a label by looking it up in labelClasses. */
+/** Get color for a label by looking it up in labelClasses.
+ *  Unknown labels get a deterministic color from the fallback palette,
+ *  avoiding colors already used by existing label classes. */
 function labelColor(label, labelClasses) {
   if (!label) return DEFAULT_ANNOTATION_COLOR;
   const cls = labelClasses.find(
     (c) => c.name === label || c.id === label
   );
-  return cls?.color || DEFAULT_ANNOTATION_COLOR;
+  if (cls?.color) return cls.color;
+  // Build set of colors already taken by defined classes
+  const usedColors = new Set(labelClasses.map((c) => c.color?.toLowerCase()));
+  const available = FALLBACK_PALETTE.filter((c) => !usedColors.has(c.toLowerCase()));
+  const palette = available.length > 0 ? available : FALLBACK_PALETTE;
+  // Deterministic pick based on label string hash
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = label.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return palette[Math.abs(hash) % palette.length];
 }
 
 /** Point-in-polygon (ray casting). Points is [[x,y], ...]. */
@@ -106,6 +119,7 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
 
   // Store bindings
   const currentImage = useStore((s) => s.currentImage);
+  const images = useStore((s) => s.images);
   const annotations = useStore((s) => s.annotations);
   const selectedAnnotation = useStore((s) => s.selectedAnnotation);
   const activeTool = useStore((s) => s.activeTool);
@@ -116,6 +130,8 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
   const cursors = useStore((s) => s.cursors);
   const currentUser = useStore((s) => s.currentUser);
   const labelClasses = useStore((s) => s.labelClasses);
+  const highlightRegion = useStore((s) => s.highlightRegion);
+  const setHighlightRegion = useStore((s) => s.setHighlightRegion);
 
   const setZoom = useStore((s) => s.setZoom);
   const setPan = useStore((s) => s.setPan);
@@ -274,6 +290,30 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
       }
     }
 
+    // Draw highlight region (missing annotation from quality review)
+    if (highlightRegion) {
+      const tl = imageToCanvas(highlightRegion.x1, highlightRegion.y1);
+      const br = imageToCanvas(highlightRegion.x2, highlightRegion.y2);
+      octx.save();
+      octx.strokeStyle = '#ff8c00';
+      octx.lineWidth = 3;
+      octx.setLineDash([8, 5]);
+      octx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      octx.setLineDash([]);
+      // Label above the box
+      if (highlightRegion.label) {
+        const labelText = `Missing: ${highlightRegion.label}`;
+        octx.font = 'bold 13px sans-serif';
+        const textW = octx.measureText(labelText).width + 10;
+        const textH = 20;
+        octx.fillStyle = '#ff8c00';
+        octx.fillRect(tl.x, tl.y - textH - 2, textW, textH);
+        octx.fillStyle = '#ffffff';
+        octx.fillText(labelText, tl.x + 5, tl.y - 7);
+      }
+      octx.restore();
+    }
+
     // Draw box-segment in-progress rectangle
     if (boxDrawing.current) {
       const b = boxDrawing.current;
@@ -377,6 +417,7 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
     segPoints,
     polyPoints,
     isAiLoading,
+    highlightRegion,
     imageToCanvas,
   ]);
 
@@ -760,15 +801,24 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
             const polygon = parseData(
               result.data || result.polygon || result
             );
+            const annLabel = result.label || activeLabel?.name || null;
             const newAnn = {
               image_id: currentImage.id,
               project_id: currentImage.project_id,
               type: 'polygon',
               data: polygon,
-              label: result.label || activeLabel?.name || null,
+              label: annLabel,
               confidence: result.score ?? null,
               source: 'ai-segment',
             };
+            // Auto-create label class if it doesn't exist yet
+            if (annLabel && !labelClasses.some((lc) => lc.name === annLabel)) {
+              const color = labelColor(annLabel, labelClasses);
+              api.createLabel(currentImage.project_id, annLabel, color).then((created) => {
+                const current = useStore.getState().labelClasses;
+                useStore.getState().setLabelClasses([...current, created]);
+              }).catch((err) => console.error('Failed to auto-create label class:', err));
+            }
             api.createAnnotation(newAnn).then((saved) => {
               addAnnotation(saved);
               onAnnotationCreated?.(saved);
@@ -783,6 +833,9 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
           setAiResults(updated);
           return;
         }
+
+        // Clear highlight region on any click
+        if (highlightRegion) setHighlightRegion(null);
 
         if (activeTool === 'select') {
           const hit = hitTest(ix, iy);
@@ -838,7 +891,7 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
     [
       getCanvasPos, canvasToImage, imageToCanvas, pan, activeTool, hitTest, hitTestAiButtons,
       segPoints, polyPoints, finishPolygon, activeLabel, aiResults, addAnnotation,
-      setSelectedAnnotation, setAiResults, onAnnotationCreated,
+      setSelectedAnnotation, setAiResults, onAnnotationCreated, highlightRegion, setHighlightRegion,
     ]
   );
 
@@ -1166,7 +1219,7 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
         flex: 1,
         position: 'relative',
         overflow: 'hidden',
-        background: '#1a1a1a',
+        background: '#e8e8e8',
       }}
     >
       {/* Image layer */}
@@ -1215,8 +1268,8 @@ export default function AnnotationCanvas({ onAnnotationCreated, annotationsVisib
           Loading image...
         </div>
       )}
-      {/* No image placeholder */}
-      {!currentImage && !isImageLoading && (
+      {/* No image placeholder — only show once images have loaded, not during project switch */}
+      {!currentImage && !isImageLoading && images.length > 0 && (
         <div
           style={{
             position: 'absolute',
