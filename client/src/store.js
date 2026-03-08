@@ -92,6 +92,7 @@ export const useStore = create((set, get) => ({
 
   // Current user identity
   currentUser: 'local-user',
+  identityReady: false,
   userIdentity: {
     login: 'local-user',
     displayName: '',
@@ -103,5 +104,7 @@ export const useStore = create((set, get) => ({
   setUserIdentity: (identity) => set({
     currentUser: identity.login,
     userIdentity: identity,
+    identityReady: true,
   }),
+  setIdentityReady: (ready) => set({ identityReady: ready }),
 }))

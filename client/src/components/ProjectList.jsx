@@ -535,6 +535,20 @@ function UserProfile() {
     ? identity.login
     : identity.tailnet || null;
 
+  const [hovered, setHovered] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const nameRef = useRef(null);
+  const subtitleRef = useRef(null);
+
+  useEffect(() => {
+    const nameEl = nameRef.current;
+    const subEl = subtitleRef.current;
+    const truncated =
+      (nameEl && nameEl.scrollWidth > nameEl.clientWidth) ||
+      (subEl && subEl.scrollWidth > subEl.clientWidth);
+    setIsTruncated(truncated);
+  }, [name, subtitle]);
+
   return (
     <div
       style={{
@@ -543,8 +557,48 @@ function UserProfile() {
         gap: 12,
         padding: '16px 20px',
         borderTop: `1px solid ${BORDER}`,
+        position: 'relative',
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {/* Tooltip bubble */}
+      {hovered && isTruncated && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: 16,
+          marginBottom: 8,
+          background: '#1a1a1a',
+          color: '#f0f0f0',
+          padding: '10px 14px',
+          borderRadius: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          fontSize: 12,
+          lineHeight: 1.5,
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          pointerEvents: 'none',
+          animation: 'profileTooltipIn 0.15s ease-out',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{name}</div>
+          {subtitle && (
+            <div style={{ color: '#aaa', marginTop: 2 }}>{subtitle}</div>
+          )}
+          {/* Arrow */}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 20,
+            width: 0,
+            height: 0,
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '6px solid #1a1a1a',
+          }} />
+        </div>
+      )}
+
       {identity.profilePicUrl ? (
         <img
           src={identity.profilePicUrl}
@@ -577,7 +631,7 @@ function UserProfile() {
         </div>
       )}
       <div style={{ minWidth: 0 }}>
-        <div style={{
+        <div ref={nameRef} style={{
           fontSize: 14,
           fontWeight: 600,
           color: TEXT_PRIMARY,
@@ -588,7 +642,7 @@ function UserProfile() {
           {name}
         </div>
         {subtitle && (
-          <div style={{
+          <div ref={subtitleRef} style={{
             fontSize: 11,
             color: TEXT_SECONDARY,
             overflow: 'hidden',
