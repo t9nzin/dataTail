@@ -59,6 +59,9 @@ app.use((req, res, next) => {
   req.user = req.headers['tailscale-user-login']
     || req.headers['x-webauth-user']
     || 'local-user';
+  req.userDisplayName = req.headers['tailscale-user-name'] || '';
+  req.userProfilePic = req.headers['tailscale-user-profile-pic'] || '';
+  req.userTailnet = req.headers['tailscale-tailnet'] || '';
   next();
 });
 
@@ -114,12 +117,15 @@ app.delete('/api/images/:imageId', (req, res) => {
 const TAILNET_SERVICE_URL = process.env.TAILNET_SERVICE_URL || 'http://127.0.0.1:4000';
 
 app.get('/api/me', async (req, res) => {
-  const user = req.user;
+  const login = req.user;
+  const displayName = req.userDisplayName;
+  const profilePicUrl = req.userProfilePic;
+  const tailnet = req.userTailnet;
   let isAdmin = false;
   let tailnetServiceAvailable = false;
   try {
     const r = await fetch(
-      `${TAILNET_SERVICE_URL}/internal/check-admin/${encodeURIComponent(user)}`
+      `${TAILNET_SERVICE_URL}/internal/check-admin/${encodeURIComponent(login)}`
     );
     if (r.ok) {
       const data = await r.json();
@@ -129,7 +135,7 @@ app.get('/api/me', async (req, res) => {
   } catch {
     // tailscale-admin service not running — fail closed
   }
-  res.json({ user, isAdmin, tailnetServiceAvailable });
+  res.json({ user: login, login, displayName, profilePicUrl, tailnet, isAdmin, tailnetServiceAvailable });
 });
 
 // Health check

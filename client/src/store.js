@@ -90,7 +90,18 @@ export const useStore = create((set, get) => ({
     return { cursors: rest };
   }),
 
-  // Current user
+  // Current user identity
   currentUser: 'local-user',
+  userIdentity: {
+    login: 'local-user',
+    displayName: '',
+    profilePicUrl: '',
+    tailnet: '',
+    isAdmin: false,
+  },
   setCurrentUser: (user) => set({ currentUser: user }),
+  setUserIdentity: (identity) => set({
+    currentUser: identity.login,
+    userIdentity: identity,
+  }),
 }))

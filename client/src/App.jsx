@@ -1,7 +1,9 @@
-import { Component } from 'react';
+import { Component, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import ProjectList from './components/ProjectList';
 import ProjectView from './components/ProjectView';
+import { useStore } from './store';
+import * as api from './api';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -35,6 +37,12 @@ class ErrorBoundary extends Component {
 }
 
 export default function App() {
+  const setUserIdentity = useStore((s) => s.setUserIdentity);
+
+  useEffect(() => {
+    api.fetchMe().then((me) => setUserIdentity(me)).catch(() => {});
+  }, []);
+
   return (
     <ErrorBoundary>
       <BrowserRouter>

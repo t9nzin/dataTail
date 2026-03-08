@@ -509,6 +509,100 @@ function NewDatasetCard({ onClick }) {
   );
 }
 
+// ── User Profile ────────────────────────────────────────────────────────────
+
+function getInitials(identity) {
+  if (identity.displayName) {
+    const parts = identity.displayName.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  if (identity.login && identity.login !== 'local-user') {
+    // email-like: take first letter of local part
+    const local = identity.login.split('@')[0];
+    const parts = local.split(/[._-]+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return local.slice(0, 2).toUpperCase();
+  }
+  return 'LU';
+}
+
+function UserProfile() {
+  const identity = useStore((s) => s.userIdentity);
+  const initials = getInitials(identity);
+  const name = identity.displayName || (identity.login !== 'local-user' ? identity.login : 'Local User');
+  const subtitle = identity.displayName && identity.login !== 'local-user'
+    ? identity.login
+    : identity.tailnet || null;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '16px 20px',
+        borderTop: `1px solid ${BORDER}`,
+      }}
+    >
+      {identity.profilePicUrl ? (
+        <img
+          src={identity.profilePicUrl}
+          alt={name}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            objectFit: 'cover',
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: ACCENT,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#fff',
+            flexShrink: 0,
+          }}
+        >
+          {initials}
+        </div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize: 14,
+          fontWeight: 600,
+          color: TEXT_PRIMARY,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {name}
+        </div>
+        {subtitle && (
+          <div style={{
+            fontSize: 11,
+            color: TEXT_SECONDARY,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {subtitle}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProjectList() {
@@ -728,36 +822,7 @@ export default function ProjectList() {
         </div>
 
         {/* Bottom: User */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '16px 20px',
-            borderTop: `1px solid ${BORDER}`,
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: ACCENT,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
-            }}
-          >
-            LU
-          </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT_PRIMARY }}>Local User</div>
-          </div>
-        </div>
+        <UserProfile />
       </aside>
 
       {/* ── Main Content ────────────────────────────────────────── */}

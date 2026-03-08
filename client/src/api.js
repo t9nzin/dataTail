@@ -29,6 +29,12 @@ function jsonDelete(url) {
   return request(url, { method: 'DELETE' });
 }
 
+// ── Identity ──────────────────────────────────────────────
+
+export async function fetchMe() {
+  return request(`${API}/me`);
+}
+
 // ── Projects ──────────────────────────────────────────────
 
 export async function fetchProjects() {
