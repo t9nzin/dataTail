@@ -1,6 +1,6 @@
 # datascale
 
-An AI-assisted dataset annotation platform that runs entirely within your Tailscale network — private, fast, and built for teams.
+An AI-assisted dataset annotation platform that runs entirely within your tailnet — private, fast, and built for teams.
 
 ---
 
