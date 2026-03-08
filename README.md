@@ -6,7 +6,7 @@ An AI-assisted dataset annotation platform that runs entirely within your Tailsc
 
 ## Demo
 
-[![Watch the demo](https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+[![Watch the demo](https://img.youtube.com/vi/jEqFOQzjBxE/0.jpg)](https://www.youtube.com/watch?v=jEqFOQzjBxE)
 
 ---
 
