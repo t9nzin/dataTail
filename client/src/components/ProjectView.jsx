@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../store';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -31,7 +31,7 @@ export default function ProjectView() {
   const [exportOpen, setExportOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const loadingRef = useRef(false);
   const [uiScale, setUiScale] = useState(1);
 
   // Scale UI chrome proportionally on smaller screens (designed for 16" MBP @ 1728px)
@@ -50,8 +50,11 @@ export default function ProjectView() {
   // Load project data on mount or when projectId changes
   useEffect(() => {
     async function loadProject() {
-      if (!projectId) return;
-      setLoading(true);
+      if (!projectId || loadingRef.current) return;
+      loadingRef.current = true;
+      // Clear stale image immediately so the canvas doesn't flash the previous project's image
+      setCurrentImage(null);
+      setImages([]);
       try {
         const project = await api.fetchProject(projectId);
         setCurrentProject(project);
@@ -75,7 +78,7 @@ export default function ProjectView() {
       } catch (err) {
         console.error('Failed to load project:', err);
       } finally {
-        setLoading(false);
+        loadingRef.current = false;
       }
     }
 
@@ -100,25 +103,6 @@ export default function ProjectView() {
 
     loadAnnotations();
   }, [currentImage?.id]);
-
-  if (loading) {
-    return (
-      <div
-        style={{
-          width: '100vw',
-          height: '100vh',
-          background: '#f0f0f0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#999',
-          fontSize: 14,
-        }}
-      >
-        Loading project...
-      </div>
-    );
-  }
 
   return (
     <div

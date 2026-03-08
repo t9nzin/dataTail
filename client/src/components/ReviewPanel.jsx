@@ -15,26 +15,30 @@ const SEVERITY_LABELS = {
 };
 
 export default function ReviewPanel({ isOpen, onClose }) {
-  const currentImage = useStore((s) => s.currentImage);
   const currentProject = useStore((s) => s.currentProject);
+  const images = useStore((s) => s.images);
   const reviewIssues = useStore((s) => s.reviewIssues);
+  const reviewHasRun = useStore((s) => s.reviewHasRun);
   const setReviewIssues = useStore((s) => s.setReviewIssues);
-  const annotations = useStore((s) => s.annotations);
+  const setReviewHasRun = useStore((s) => s.setReviewHasRun);
   const updateAnnotation = useStore((s) => s.updateAnnotation);
   const removeAnnotation = useStore((s) => s.removeAnnotation);
   const setSelectedAnnotation = useStore((s) => s.setSelectedAnnotation);
+  const setCurrentImage = useStore((s) => s.setCurrentImage);
+  const setHighlightRegion = useStore((s) => s.setHighlightRegion);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   async function handleRunReview() {
-    if (!currentImage) return;
+    if (!currentProject) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await api.qualityReview(currentImage.id, currentProject?.id);
+      const result = await api.qualityReview(currentProject.id);
       const issues = result.issues || result || [];
       setReviewIssues(Array.isArray(issues) ? issues : []);
+      setReviewHasRun(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,12 +70,26 @@ export default function ReviewPanel({ isOpen, onClose }) {
   }
 
   function handleView(issue) {
-    if (issue.annotation_id) {
-      const ann = annotations.find((a) => a.id === issue.annotation_id);
-      if (ann) {
-        setSelectedAnnotation(ann);
-      }
+    if (issue.image_id) {
+      const img = images.find((i) => i.id === issue.image_id);
+      if (img) setCurrentImage(img);
     }
+    if (issue.annotation_id) {
+      setTimeout(() => {
+        const ann = useStore.getState().annotations.find((a) => a.id === issue.annotation_id);
+        if (ann) setSelectedAnnotation(ann);
+      }, 100);
+    }
+    if (issue.bbox && !issue.annotation_id) {
+      setTimeout(() => {
+        setHighlightRegion({
+          x1: issue.bbox[0], y1: issue.bbox[1],
+          x2: issue.bbox[2], y2: issue.bbox[3],
+          label: issue.predicted_label || 'Unknown',
+        });
+      }, 100);
+    }
+    onClose();
   }
 
   if (!isOpen) return null;
@@ -129,14 +147,14 @@ export default function ReviewPanel({ isOpen, onClose }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
               onClick={handleRunReview}
-              disabled={loading || !currentImage}
+              disabled={loading || !currentProject}
               style={{
                 padding: '6px 14px',
                 background: loading ? '#3d3d3d' : '#4a9eff',
                 color: loading ? '#888' : '#fff',
                 border: 'none',
                 borderRadius: 4,
-                cursor: loading || !currentImage ? 'default' : 'pointer',
+                cursor: loading || !currentProject ? 'default' : 'pointer',
                 fontSize: 12,
                 fontWeight: 600,
               }}
@@ -178,32 +196,49 @@ export default function ReviewPanel({ isOpen, onClose }) {
             </div>
           )}
 
-          {!currentImage && (
+          {!currentProject && (
             <div style={{ textAlign: 'center', color: '#666', padding: 40, fontSize: 13 }}>
-              Select an image to run quality review
+              Select a project to run quality review
             </div>
           )}
 
-          {currentImage && sortedIssues.length === 0 && !loading && (
+          {reviewHasRun && reviewIssues.length === 0 && sortedIssues.length === 0 && !loading && (
+            <div
+              style={{
+                padding: '16px',
+                background: '#4aff4a15',
+                border: '1px solid #4aff4a44',
+                borderRadius: 6,
+                color: '#4aff4a',
+                fontSize: 14,
+                textAlign: 'center',
+                fontWeight: 600,
+              }}
+            >
+              All annotations look good!
+            </div>
+          )}
+
+          {currentProject && !reviewHasRun && sortedIssues.length === 0 && !loading && (
             <div style={{ textAlign: 'center', color: '#666', padding: 40, fontSize: 13 }}>
-              {reviewIssues.length === 0
-                ? 'Click "Run Review" to check annotation quality'
-                : 'All issues resolved'}
+              Click "Run Review" to check annotation quality
             </div>
           )}
 
           {loading && sortedIssues.length === 0 && (
             <div style={{ textAlign: 'center', color: '#888', padding: 40, fontSize: 13 }}>
-              Analyzing annotations...
+              Analyzing all images...
             </div>
           )}
 
           {sortedIssues.map((issue, idx) => {
             const severity = issue.severity || 'info';
             const color = SEVERITY_COLORS[severity] || '#888';
+            const isClickable = issue.annotation_id || issue.bbox;
             return (
               <div
                 key={idx}
+                onClick={() => isClickable && handleView(issue)}
                 style={{
                   display: 'flex',
                   gap: 12,
@@ -212,6 +247,7 @@ export default function ReviewPanel({ isOpen, onClose }) {
                   borderRadius: 8,
                   border: `1px solid ${color}33`,
                   marginBottom: 8,
+                  cursor: isClickable ? 'pointer' : 'default',
                 }}
               >
                 {/* Severity icon */}
@@ -236,6 +272,11 @@ export default function ReviewPanel({ isOpen, onClose }) {
 
                 {/* Content */}
                 <div style={{ flex: 1 }}>
+                  {issue.image_filename && (
+                    <div style={{ fontSize: 11, color: '#666', marginBottom: 3 }}>
+                      {issue.image_filename}
+                    </div>
+                  )}
                   <div style={{ fontSize: 13, color: '#e0e0e0', marginBottom: 4 }}>
                     {issue.message}
                   </div>
@@ -247,7 +288,7 @@ export default function ReviewPanel({ isOpen, onClose }) {
                   <div style={{ display: 'flex', gap: 6 }}>
                     {issue.fix && (
                       <button
-                        onClick={() => handleAcceptFix(issue, idx)}
+                        onClick={(e) => { e.stopPropagation(); handleAcceptFix(issue, idx); }}
                         style={{
                           padding: '3px 10px',
                           background: '#4aff4a22',
@@ -262,7 +303,7 @@ export default function ReviewPanel({ isOpen, onClose }) {
                       </button>
                     )}
                     <button
-                      onClick={() => handleDismiss(idx)}
+                      onClick={(e) => { e.stopPropagation(); handleDismiss(idx); }}
                       style={{
                         padding: '3px 10px',
                         background: '#55555522',
@@ -275,9 +316,9 @@ export default function ReviewPanel({ isOpen, onClose }) {
                     >
                       Dismiss
                     </button>
-                    {issue.annotation_id && (
+                    {isClickable && (
                       <button
-                        onClick={() => handleView(issue)}
+                        onClick={(e) => { e.stopPropagation(); handleView(issue); }}
                         style={{
                           padding: '3px 10px',
                           background: '#4a9eff22',

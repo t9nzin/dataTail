@@ -17,7 +17,6 @@ from pydantic import BaseModel
 
 from models import DEVICE, get_clip_model, get_clip_preprocess, get_clip_tokenizer, get_sam_model, get_sam2_model, get_yolo_world_model
 from utils import (
-    compute_iou,
     crop_region,
     image_from_upload,
     mask_to_polygon,
@@ -253,11 +252,14 @@ async def nl_annotate(
 # ---------------------------------------------------------------------------
 
 class QualityIssue(BaseModel):
-    type: str  # "label_mismatch" | "missing_annotation" | "geometric_anomaly"
+    type: str  # "label_mismatch" | "missing_annotation"
     severity: str  # "high" | "medium" | "low"
     message: str
     annotation_id: Optional[str] = None
     suggestion: Optional[str] = None
+    bbox: Optional[List[float]] = None  # [x1, y1, x2, y2] for missing annotation regions
+    predicted_label: Optional[str] = None
+    confidence: Optional[float] = None
 
 
 class QualityReviewResponse(BaseModel):
@@ -269,16 +271,17 @@ class QualityReviewResponse(BaseModel):
 async def quality_review(
     image: UploadFile = File(...),
     annotations: str = Form(...),
+    project_labels: str = Form("[]"),
 ):
     """Review annotation quality on an image.
 
     *annotations*: JSON list of ``{"label": str, "bbox": {x, y, w, h} | None,
     "polygon": [[x,y],...] | None, "id": str}``.
+    *project_labels*: JSON list of label class names for the project.
 
     Checks performed:
     a. Label-region consistency via CLIP
-    b. Missing annotation detection via SAM segment-everything
-    c. Geometric anomalies (aspect ratio, size, overlap)
+    b. Missing annotation detection via SAM + CLIP
     """
     import json
 
@@ -287,8 +290,12 @@ async def quality_review(
     except (json.JSONDecodeError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid JSON in annotations: {exc}")
 
+    try:
+        proj_labels: list[str] = json.loads(project_labels)
+    except (json.JSONDecodeError, TypeError):
+        proj_labels = []
+
     pil_img, np_img = await image_from_upload(image)
-    img_w, img_h = pil_img.size
 
     issues: List[QualityIssue] = []
 
@@ -305,13 +312,6 @@ async def quality_review(
         try:
             crop = crop_region(pil_img, bbox)
         except Exception:
-            issues.append(QualityIssue(
-                type="geometric_anomaly",
-                severity="high",
-                message=f"Annotation {ann_id} has an invalid bounding box.",
-                annotation_id=ann_id,
-                suggestion="Fix the bounding box coordinates.",
-            ))
             continue
 
         if crop.width < 2 or crop.height < 2:
@@ -341,122 +341,93 @@ async def quality_review(
                     suggestion=f"Consider re-labelling to '{candidate_labels[best_idx]}'.",
                 ))
 
-    # --- b) Missing annotation detection ---
-    try:
-        masks_data = _segment_everything(np_img, points_per_side=16)  # coarser for speed
-    except Exception as exc:
-        logger.warning("SAM segment-everything failed during quality review: %s", exc)
-        masks_data = []
+    # --- b) Missing annotation detection via SAM + CLIP ---
+    if proj_labels and np_img is not None:
+        img_h, img_w = np_img.shape[:2]
+        img_area = img_h * img_w
+        min_area = img_area * 0.01  # skip segments < 1% of image
 
-    for seg in masks_data:
-        sx, sy, sw, sh = [int(v) for v in seg["bbox"]]
-        seg_area = int(seg["area"])
-        # Skip tiny segments.
-        if seg_area < 0.005 * img_w * img_h:
-            continue
-
-        # Check IoU against all annotated bboxes.
-        matched = False
+        # Build list of existing annotation bboxes [x1, y1, x2, y2]
+        existing_bboxes = []
         for ann in annot_list:
-            abbox = ann.get("bbox")
-            if not abbox:
+            b = ann.get("bbox")
+            if b and all(k in b for k in ("x", "y", "w", "h")):
+                existing_bboxes.append([b["x"], b["y"], b["x"] + b["w"], b["y"] + b["h"]])
+
+        try:
+            masks_data = _segment_everything(np_img, points_per_side=16)
+        except Exception as exc:
+            logger.warning("SAM segment-everything failed during quality review: %s", exc)
+            masks_data = []
+
+        clip_labels = proj_labels + ["background", "other"]
+        text_emb_miss = _clip_encode_text(clip_labels)
+        n_proj = len(proj_labels)
+
+        for entry in masks_data:
+            seg_area = int(entry.get("area", 0))
+            if seg_area < min_area:
                 continue
-            # Simple bbox IoU.
-            ax, ay, aw, ah = abbox["x"], abbox["y"], abbox["w"], abbox["h"]
-            ix1 = max(sx, ax)
-            iy1 = max(sy, ay)
-            ix2 = min(sx + sw, ax + aw)
-            iy2 = min(sy + sh, ay + ah)
-            if ix2 > ix1 and iy2 > iy1:
-                inter = (ix2 - ix1) * (iy2 - iy1)
-                union = sw * sh + aw * ah - inter
-                if union > 0 and inter / union > 0.3:
-                    matched = True
+            x, y, w, h = [int(v) for v in entry["bbox"]]
+            if w < 5 or h < 5:
+                continue
+
+            seg_box = [x, y, x + w, y + h]
+
+            # Check bbox IoU against existing annotation bboxes — skip if overlaps
+            skip = False
+            for eb in existing_bboxes:
+                # Bbox IoU: seg_box and eb are both [x1, y1, x2, y2]
+                ix1 = max(seg_box[0], eb[0])
+                iy1 = max(seg_box[1], eb[1])
+                ix2 = min(seg_box[2], eb[2])
+                iy2 = min(seg_box[3], eb[3])
+                inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                area_a = (seg_box[2] - seg_box[0]) * (seg_box[3] - seg_box[1])
+                area_b = (eb[2] - eb[0]) * (eb[3] - eb[1])
+                union = area_a + area_b - inter
+                iou = inter / union if union > 0 else 0.0
+                if iou > 0.3:
+                    skip = True
                     break
-        if not matched:
-            issues.append(QualityIssue(
-                type="missing_annotation",
-                severity="medium",
-                message=(
-                    f"Detected unannotated region at bbox [{sx}, {sy}, {sw}, {sh}] "
-                    f"with area {seg_area}."
-                ),
-                suggestion="Review this region and add an annotation if needed.",
-            ))
-
-    # --- c) Geometric anomalies ---
-    areas = []
-    for ann in annot_list:
-        bbox = ann.get("bbox")
-        if not bbox:
-            continue
-        ann_id = ann.get("id", "unknown")
-        w, h = bbox["w"], bbox["h"]
-        area = w * h
-        areas.append(area)
-
-        # Extreme aspect ratio.
-        ar = max(w, h) / max(min(w, h), 1)
-        if ar > 10:
-            issues.append(QualityIssue(
-                type="geometric_anomaly",
-                severity="low",
-                message=f"Annotation '{ann_id}' has extreme aspect ratio {ar:.1f}.",
-                annotation_id=ann_id,
-                suggestion="Verify the bounding box dimensions.",
-            ))
-
-        # Tiny annotation.
-        if area < 0.001 * img_w * img_h:
-            issues.append(QualityIssue(
-                type="geometric_anomaly",
-                severity="low",
-                message=f"Annotation '{ann_id}' is very small ({w}x{h} px).",
-                annotation_id=ann_id,
-                suggestion="Verify this annotation is intentional.",
-            ))
-
-    # Check pairwise overlap (high IoU = potential duplicate).
-    for i, a1 in enumerate(annot_list):
-        b1 = a1.get("bbox")
-        if not b1:
-            continue
-        for j, a2 in enumerate(annot_list):
-            if j <= i:
+            if skip:
                 continue
-            b2 = a2.get("bbox")
-            if not b2:
+
+            # Crop and classify with CLIP
+            crop = pil_img.crop((x, y, x + w, y + h))
+            if crop.width < 2 or crop.height < 2:
                 continue
-            ix1 = max(b1["x"], b2["x"])
-            iy1 = max(b1["y"], b2["y"])
-            ix2 = min(b1["x"] + b1["w"], b2["x"] + b2["w"])
-            iy2 = min(b1["y"] + b1["h"], b2["y"] + b2["h"])
-            if ix2 > ix1 and iy2 > iy1:
-                inter = (ix2 - ix1) * (iy2 - iy1)
-                area1 = b1["w"] * b1["h"]
-                area2 = b2["w"] * b2["h"]
-                union = area1 + area2 - inter
-                if union > 0 and inter / union > 0.7:
-                    issues.append(QualityIssue(
-                        type="geometric_anomaly",
-                        severity="medium",
-                        message=(
-                            f"Annotations '{a1.get('id', i)}' and '{a2.get('id', j)}' "
-                            f"have high overlap (IoU {inter / union:.2f}). Possible duplicate."
-                        ),
-                        annotation_id=a1.get("id"),
-                        suggestion="Remove one if they refer to the same object.",
-                    ))
+            img_emb = _clip_encode_image_pil(crop)
+            sims = text_emb_miss @ img_emb
+            exp = np.exp(sims - sims.max())
+            probs = exp / exp.sum()
 
-    # Sort by severity.
-    severity_order = {"high": 0, "medium": 1, "low": 2}
-    issues.sort(key=lambda x: severity_order.get(x.severity, 3))
+            # Best project label (excluding background/other)
+            proj_probs = probs[:n_proj]
+            best_proj_idx = int(np.argmax(proj_probs))
+            best_proj_prob = float(proj_probs[best_proj_idx])
+            bg_prob = float(probs[n_proj])      # "background"
+            other_prob = float(probs[n_proj + 1])  # "other"
 
+            if best_proj_prob > 0.45 and best_proj_prob > bg_prob * 1.5 and best_proj_prob > other_prob * 1.5:
+                best_label = proj_labels[best_proj_idx]
+                issues.append(QualityIssue(
+                    type="missing_annotation",
+                    severity="medium",
+                    message=(
+                        f"Possible unannotated '{best_label}' detected "
+                        f"(confidence {best_proj_prob:.0%})."
+                    ),
+                    bbox=[float(seg_box[0]), float(seg_box[1]), float(seg_box[2]), float(seg_box[3])],
+                    predicted_label=best_label,
+                    confidence=round(best_proj_prob, 3),
+                ))
+
+    n_mismatch = sum(1 for i in issues if i.type == "label_mismatch")
+    n_missing = sum(1 for i in issues if i.type == "missing_annotation")
     summary = (
-        f"Found {len(issues)} issue(s) across {len(annot_list)} annotation(s): "
-        f"{sum(1 for i in issues if i.severity == 'high')} high, "
-        f"{sum(1 for i in issues if i.severity == 'medium')} medium, "
-        f"{sum(1 for i in issues if i.severity == 'low')} low."
+        f"Found {n_mismatch} label mismatch(es) and {n_missing} possible missing "
+        f"annotation(s) across {len(annot_list)} annotation(s)."
     )
 
     return QualityReviewResponse(issues=issues, summary=summary)

@@ -164,8 +164,17 @@ function LabelsPanel() {
   const unusedClasses = labelClasses.filter((lc) => (classCounts[lc.name] || 0) === 0);
 
   function getLabelColor(labelName) {
+    if (!labelName) return '#888';
     const lc = labelClasses.find((l) => l.name === labelName);
-    return lc?.color || '#888';
+    if (lc?.color) return lc.color;
+    const usedColors = new Set(labelClasses.map((c) => c.color?.toLowerCase()));
+    const palette = defaultColors.filter((c) => !usedColors.has(c.toLowerCase()));
+    const pool = palette.length > 0 ? palette : defaultColors;
+    let hash = 0;
+    for (let i = 0; i < labelName.length; i++) {
+      hash = labelName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return pool[Math.abs(hash) % pool.length];
   }
 
   async function handleAddLabel() {
@@ -689,8 +698,17 @@ function LayersList() {
   }, [editingLabelId]);
 
   function getLabelColor(labelName) {
+    if (!labelName) return '#888';
     const lc = labelClasses.find((l) => l.name === labelName);
-    return lc?.color || '#888';
+    if (lc?.color) return lc.color;
+    const usedColors = new Set(labelClasses.map((c) => c.color?.toLowerCase()));
+    const palette = defaultColors.filter((c) => !usedColors.has(c.toLowerCase()));
+    const pool = palette.length > 0 ? palette : defaultColors;
+    let hash = 0;
+    for (let i = 0; i < labelName.length; i++) {
+      hash = labelName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return pool[Math.abs(hash) % pool.length];
   }
 
   async function handleRelabel(ann, newLabelName) {
@@ -1213,27 +1231,148 @@ function ImagesPanel() {
 
 // ── AI Review Tab Content ────────────────────────────────────────────────────
 
+// Step indices
+const REVIEW_STEPS = [
+  { label: 'Loading ML models' },
+  { label: null }, // dynamic: "Analyzing image X of N"
+  { label: 'Checking label consistency' },
+  { label: 'Generating report' },
+];
+
+function ReviewProgressCard({ currentStep, imageProgress, totalImages }) {
+  const steps = [
+    'Loading ML models',
+    totalImages > 0 ? `Analyzing image ${imageProgress} of ${totalImages}` : 'Analyzing images',
+    'Checking label consistency',
+    'Generating report',
+  ];
+
+  return (
+    <div style={{
+      margin: '0 18px 18px',
+      padding: '24px 24px 20px',
+      background: '#fff',
+      borderRadius: 16,
+      border: '1px solid #ebebeb',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+    }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_PRIMARY, marginBottom: 4 }}>
+        Annotation Check
+      </div>
+      <div style={{ fontSize: 17, color: TEXT_MUTED, marginBottom: 22 }}>
+        Using AI to verify your annotations
+      </div>
+      {steps.map((label, i) => {
+        const done = i < currentStep;
+        const active = i === currentStep;
+        const pending = i > currentStep;
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: i < steps.length - 1 ? 16 : 0 }}>
+            {/* Icon */}
+            {done && (
+              <div style={{
+                width: 26, height: 26, borderRadius: '50%',
+                background: 'rgba(46,204,113,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6l3 3 5-5" stroke="#27ae60" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            )}
+            {active && (
+              <div style={{
+                width: 26, height: 26, borderRadius: '50%',
+                border: `2.5px solid ${ACCENT}`,
+                borderTopColor: 'transparent',
+                flexShrink: 0,
+                animation: 'spin 0.75s linear infinite',
+              }} />
+            )}
+            {pending && (
+              <div style={{
+                width: 26, height: 26, borderRadius: '50%',
+                border: '2px solid #ddd',
+                flexShrink: 0,
+              }} />
+            )}
+            {/* Label */}
+            <span style={{
+              fontSize: 19,
+              fontWeight: active ? 600 : 400,
+              color: done ? TEXT_SECONDARY : active ? ACCENT : TEXT_MUTED,
+            }}>
+              {label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ReviewTabPanel() {
-  const currentImage = useStore((s) => s.currentImage);
   const currentProject = useStore((s) => s.currentProject);
+  const images = useStore((s) => s.images);
+  const labelClasses = useStore((s) => s.labelClasses);
   const reviewIssues = useStore((s) => s.reviewIssues);
+  const reviewHasRun = useStore((s) => s.reviewHasRun);
   const setReviewIssues = useStore((s) => s.setReviewIssues);
-  const annotations = useStore((s) => s.annotations);
+  const setReviewHasRun = useStore((s) => s.setReviewHasRun);
   const updateAnnotation = useStore((s) => s.updateAnnotation);
   const removeAnnotation = useStore((s) => s.removeAnnotation);
   const setSelectedAnnotation = useStore((s) => s.setSelectedAnnotation);
+  const setCurrentImage = useStore((s) => s.setCurrentImage);
+  const setHighlightRegion = useStore((s) => s.setHighlightRegion);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Progress state: step 0=models, 1=analyzing images, 2=label check, 3=report
+  const [reviewStep, setReviewStep] = useState(0);
+  const [imageProgress, setImageProgress] = useState(0);
 
   async function handleRunReview() {
-    if (!currentImage) return;
+    if (!currentProject) return;
     setLoading(true);
     setError(null);
+    setReviewStep(0);
+    setImageProgress(0);
+    // Clear previous issues at start
+    setReviewIssues([]);
+
     try {
-      const result = await api.qualityReview(currentImage.id, currentProject?.id);
-      const issues = result.issues || result || [];
-      setReviewIssues(Array.isArray(issues) ? issues : []);
+      const projectLabels = labelClasses.map((lc) => lc.name);
+      const totalImages = images.length;
+
+      // Step 0 → 1: "Loading ML models" completes when first request fires
+      setReviewStep(1);
+
+      // Clear old DB issues for this project before starting
+      await api.clearReviewIssues(currentProject.id);
+      const allIssues = [];
+
+      for (let i = 0; i < totalImages; i++) {
+        setImageProgress(i + 1);
+        // step 1 = analyzing images; step 2 = label consistency check
+        // We blend: first half is step 1, second half bumps to step 2
+        if (i === Math.floor(totalImages / 2)) setReviewStep(2);
+
+        const img = images[i];
+        try {
+          const result = await api.qualityReviewImage(img.id, currentProject.id, projectLabels);
+          if (result.issues) allIssues.push(...result.issues);
+        } catch (err) {
+          console.warn(`Review failed for image ${img.id}:`, err.message);
+        }
+      }
+
+      // Step 3: generating report
+      setReviewStep(3);
+      await new Promise((r) => setTimeout(r, 400)); // brief pause so step 3 is visible
+
+      setReviewIssues(allIssues);
+      setReviewHasRun(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1263,9 +1402,28 @@ function ReviewTabPanel() {
   }
 
   function handleView(issue) {
+    // Navigate to the issue's image first
+    if (issue.image_id) {
+      const img = images.find((i) => i.id === issue.image_id);
+      if (img) setCurrentImage(img);
+    }
+    // For label mismatch: select the annotation
     if (issue.annotation_id) {
-      const ann = annotations.find((a) => a.id === issue.annotation_id);
-      if (ann) setSelectedAnnotation(ann);
+      // Small delay so annotations load for the new image
+      setTimeout(() => {
+        const ann = useStore.getState().annotations.find((a) => a.id === issue.annotation_id);
+        if (ann) setSelectedAnnotation(ann);
+      }, 100);
+    }
+    // For missing annotation: show highlight region
+    if (issue.bbox && !issue.annotation_id) {
+      setTimeout(() => {
+        setHighlightRegion({
+          x1: issue.bbox[0], y1: issue.bbox[1],
+          x2: issue.bbox[2], y2: issue.bbox[3],
+          label: issue.predicted_label || 'Unknown',
+        });
+      }, 100);
     }
   }
 
@@ -1274,19 +1432,27 @@ function ReviewTabPanel() {
     return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
   });
 
+  // Determine empty state message
+  const emptyMessage = (() => {
+    if (!currentProject) return 'Select a project to run quality review';
+    if (reviewIssues.length === 0) return null; // show success banner instead
+    if (sortedIssues.length === 0) return 'All issues resolved';
+    return null;
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '24px 24px 18px' }}>
         <span style={{ fontSize: 26, fontWeight: 700, color: TEXT_PRIMARY }}>AI Review</span>
         <div style={{ fontSize: 21, color: TEXT_SECONDARY, marginTop: 6 }}>
-          Check annotation quality with AI
+          Check label quality across all images
         </div>
       </div>
 
       <div style={{ padding: '0 24px 15px' }}>
         <button
           onClick={handleRunReview}
-          disabled={loading || !currentImage}
+          disabled={loading || !currentProject}
           style={{
             width: '100%',
             padding: '15px',
@@ -1296,12 +1462,12 @@ function ReviewTabPanel() {
             color: loading ? TEXT_SECONDARY : '#fff',
             border: 'none',
             borderRadius: 9,
-            cursor: loading || !currentImage ? 'default' : 'pointer',
-            opacity: !currentImage ? 0.5 : 1,
+            cursor: loading || !currentProject ? 'default' : 'pointer',
+            opacity: !currentProject ? 0.5 : 1,
             transition: 'background 0.15s',
           }}
         >
-          {loading ? 'Reviewing...' : 'Run Quality Review'}
+          {loading ? `Reviewing... (${imageProgress}/${images.length})` : 'Run Quality Review'}
         </button>
       </div>
 
@@ -1322,40 +1488,68 @@ function ReviewTabPanel() {
           </div>
         )}
 
-        {!currentImage && (
-          <div style={{ textAlign: 'center', color: TEXT_MUTED, padding: '48px 24px', fontSize: 20 }}>
-            Select an image to run quality review
+        {reviewHasRun && reviewIssues.length === 0 && sortedIssues.length === 0 && !loading && (
+          <div
+            style={{
+              margin: '0 24px 12px',
+              padding: '18px 18px',
+              background: 'rgba(46,204,113,0.08)',
+              border: '1px solid rgba(46,204,113,0.25)',
+              borderRadius: 9,
+              color: '#27ae60',
+              fontSize: 20,
+              textAlign: 'center',
+              fontWeight: 600,
+            }}
+          >
+            All annotations look good!
           </div>
         )}
 
-        {currentImage && sortedIssues.length === 0 && !loading && (
+        {emptyMessage && (
           <div style={{ textAlign: 'center', color: TEXT_MUTED, padding: '48px 24px', fontSize: 20 }}>
-            {reviewIssues.length === 0
-              ? 'Click "Run Quality Review" to check annotations'
-              : 'All issues resolved'}
+            {emptyMessage}
           </div>
         )}
 
-        {loading && sortedIssues.length === 0 && (
-          <div style={{ textAlign: 'center', color: TEXT_SECONDARY, padding: '48px 24px', fontSize: 20 }}>
-            Analyzing annotations...
-          </div>
+        {loading && (
+          <ReviewProgressCard
+            currentStep={reviewStep}
+            imageProgress={imageProgress}
+            totalImages={images.length}
+          />
         )}
 
         {sortedIssues.map((issue, idx) => {
           const severity = issue.severity || 'info';
           const color = SEVERITY_COLORS[severity] || '#888';
+          const isClickable = issue.annotation_id || issue.bbox;
           return (
             <div
               key={idx}
+              onClick={() => handleView(issue)}
               style={{
                 margin: '0 18px 9px',
                 padding: '15px 18px',
                 background: '#fafafa',
                 borderRadius: 12,
-                borderLeft: `4px solid ${color}`,
+                border: `1px solid ${color}33`,
+                cursor: isClickable ? 'pointer' : 'default',
               }}
             >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: color,
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 17, color: TEXT_MUTED }}>
+                  {issue.image_filename || (severity === 'error' ? 'Label mismatch' : 'Missing annotation')}
+                </span>
+              </div>
               <div style={{ fontSize: 20, color: TEXT_PRIMARY, marginBottom: 6, lineHeight: 1.4 }}>
                 {issue.message}
               </div>
@@ -1367,7 +1561,7 @@ function ReviewTabPanel() {
               <div style={{ display: 'flex', gap: 9 }}>
                 {issue.fix && (
                   <button
-                    onClick={() => handleAcceptFix(issue, idx)}
+                    onClick={(e) => { e.stopPropagation(); handleAcceptFix(issue, idx); }}
                     style={{
                       padding: '8px 15px',
                       background: 'rgba(46,204,113,0.08)',
@@ -1383,7 +1577,7 @@ function ReviewTabPanel() {
                   </button>
                 )}
                 <button
-                  onClick={() => handleDismiss(idx)}
+                  onClick={(e) => { e.stopPropagation(); handleDismiss(idx); }}
                   style={{
                     padding: '8px 15px',
                     background: '#f0f0f0',
@@ -1397,9 +1591,9 @@ function ReviewTabPanel() {
                 >
                   Dismiss
                 </button>
-                {issue.annotation_id && (
+                {isClickable && (
                   <button
-                    onClick={() => handleView(issue)}
+                    onClick={(e) => { e.stopPropagation(); handleView(issue); }}
                     style={{
                       padding: '8px 15px',
                       background: ACCENT_BG,

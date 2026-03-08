@@ -272,46 +272,173 @@ router.post('/agent/nl-annotate', async (req, res, next) => {
   }
 });
 
-// POST /api/ai/agent/quality-review — review annotations for quality
+// POST /api/ai/agent/quality-review — review ALL images in a project
+// DELETE /api/ai/agent/quality-review — clear all review issues for a project
+router.delete('/agent/quality-review', (req, res, next) => {
+  try {
+    const { project_id } = req.body;
+    if (!project_id) return res.status(400).json({ error: 'project_id is required' });
+    db.prepare('DELETE FROM review_issues WHERE project_id = ?').run(project_id);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/ai/agent/quality-review/image — review a single image (used for per-image progress)
+router.post('/agent/quality-review/image', async (req, res, next) => {
+  try {
+    const { image_id, project_id, project_labels } = req.body;
+    if (!image_id || !project_id) {
+      return res.status(400).json({ error: 'image_id and project_id are required' });
+    }
+
+    const image = db.prepare('SELECT * FROM images WHERE id = ?').get(image_id);
+    if (!image) return res.status(404).json({ error: 'Image not found' });
+
+    const rawAnnotations = db.prepare('SELECT * FROM annotations WHERE image_id = ?').all(image_id);
+    const annotations = rawAnnotations.map((a) => {
+      const parsed = JSON.parse(a.data);
+      let bbox = null;
+      if (a.type === 'bbox' && parsed.x1 != null) {
+        bbox = { x: parsed.x1, y: parsed.y1, w: parsed.x2 - parsed.x1, h: parsed.y2 - parsed.y1 };
+      } else if (a.type === 'polygon' && Array.isArray(parsed) && parsed.length > 0) {
+        const flat = Array.isArray(parsed[0]?.[0]) ? parsed[0] : parsed;
+        const xs = flat.map((p) => p[0]);
+        const ys = flat.map((p) => p[1]);
+        const minX = Math.min(...xs), minY = Math.min(...ys);
+        const maxX = Math.max(...xs), maxY = Math.max(...ys);
+        bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+      }
+      return { id: a.id, label: a.label, type: a.type, bbox, polygon: a.type === 'polygon' ? parsed : null };
+    });
+
+    const result = await proxyWithImage('/agent/quality-review', image_id, {
+      annotations,
+      project_labels: project_labels || [],
+    });
+
+    const now = new Date().toISOString();
+    const insertStmt = db.prepare(`
+      INSERT INTO review_issues (id, project_id, image_id, annotation_id, type, severity, message, suggestion, bbox, predicted_label, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    `);
+
+    if (result.issues && Array.isArray(result.issues)) {
+      for (const issue of result.issues) {
+        insertStmt.run(
+          uuidv4(), project_id, image_id,
+          issue.annotation_id || null, issue.type || null,
+          ({ high: 'error', medium: 'warning', low: 'info' }[issue.severity]) || 'warning',
+          issue.message, issue.suggestion || null,
+          issue.bbox ? JSON.stringify(issue.bbox) : null,
+          issue.predicted_label || null, now
+        );
+      }
+    }
+
+    const enrichedIssues = (result.issues || []).map((issue) => ({
+      ...issue,
+      image_id: image.id,
+      image_filename: image.original_name || image.filename,
+    }));
+
+    res.json({ issues: enrichedIssues });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/ai/agent/quality-review — review ALL images in a project
 router.post('/agent/quality-review', async (req, res, next) => {
   try {
-    const { image_id, project_id } = req.body;
+    const { project_id } = req.body;
 
-    // Get annotations for the image
-    const annotations = db.prepare(
-      'SELECT * FROM annotations WHERE image_id = ?'
-    ).all(image_id);
+    if (!project_id) {
+      return res.status(400).json({ error: 'project_id is required' });
+    }
 
-    const result = await proxyWithImage('/agent/quality-review', image_id, { annotations });
+    // Get all images in the project
+    const images = db.prepare('SELECT * FROM images WHERE project_id = ?').all(project_id);
 
-    // Save issues to review_issues table
-    if (result.issues && Array.isArray(result.issues)) {
-      const now = new Date().toISOString();
-      const insertStmt = db.prepare(`
-        INSERT INTO review_issues (id, project_id, image_id, annotation_id, type, severity, message, suggestion, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
-      `);
+    // Get project label classes
+    const labelClasses = db.prepare('SELECT name FROM label_classes WHERE project_id = ?').all(project_id);
+    const projectLabels = labelClasses.map((lc) => lc.name);
 
-      const insertAll = db.transaction((issues) => {
-        for (const issue of issues) {
+    // Clear old issues for entire project
+    db.prepare('DELETE FROM review_issues WHERE project_id = ?').run(project_id);
+
+    const allIssues = [];
+    const now = new Date().toISOString();
+    const insertStmt = db.prepare(`
+      INSERT INTO review_issues (id, project_id, image_id, annotation_id, type, severity, message, suggestion, bbox, predicted_label, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    `);
+
+    for (const image of images) {
+      // Get annotations for this image
+      const rawAnnotations = db.prepare(
+        'SELECT * FROM annotations WHERE image_id = ?'
+      ).all(image.id);
+
+      const annotations = rawAnnotations.map((a) => {
+        const parsed = JSON.parse(a.data);
+        let bbox = null;
+        if (a.type === 'bbox' && parsed.x1 != null) {
+          bbox = { x: parsed.x1, y: parsed.y1, w: parsed.x2 - parsed.x1, h: parsed.y2 - parsed.y1 };
+        } else if (a.type === 'polygon' && Array.isArray(parsed) && parsed.length > 0) {
+          const flat = Array.isArray(parsed[0]?.[0]) ? parsed[0] : parsed;
+          const xs = flat.map((p) => p[0]);
+          const ys = flat.map((p) => p[1]);
+          const minX = Math.min(...xs), minY = Math.min(...ys);
+          const maxX = Math.max(...xs), maxY = Math.max(...ys);
+          bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+        }
+        return { id: a.id, label: a.label, type: a.type, bbox, polygon: a.type === 'polygon' ? parsed : null };
+      });
+
+      let result;
+      try {
+        result = await proxyWithImage('/agent/quality-review', image.id, {
+          annotations,
+          project_labels: projectLabels,
+        });
+      } catch (err) {
+        console.error(`Quality review failed for image ${image.id}:`, err.message);
+        continue;
+      }
+
+      if (result.issues && Array.isArray(result.issues)) {
+        for (const issue of result.issues) {
+          const enriched = {
+            ...issue,
+            image_id: image.id,
+            image_filename: image.original_name || image.filename,
+          };
+          allIssues.push(enriched);
+
           insertStmt.run(
             uuidv4(),
             project_id,
-            image_id,
+            image.id,
             issue.annotation_id || null,
             issue.type || null,
-            issue.severity || 'warning',
+            ({ high: 'error', medium: 'warning', low: 'info' }[issue.severity]) || 'warning',
             issue.message,
             issue.suggestion || null,
+            issue.bbox ? JSON.stringify(issue.bbox) : null,
+            issue.predicted_label || null,
             now
           );
         }
-      });
-
-      insertAll(result.issues);
+      }
     }
 
-    res.json(result);
+    const nMismatch = allIssues.filter((i) => i.type === 'label_mismatch').length;
+    const nMissing = allIssues.filter((i) => i.type === 'missing_annotation').length;
+    const summary = `Reviewed ${images.length} image(s): found ${nMismatch} label mismatch(es) and ${nMissing} possible missing annotation(s).`;
+
+    res.json({ issues: allIssues, summary, images_reviewed: images.length });
   } catch (err) {
     next(err);
   }

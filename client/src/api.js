@@ -192,10 +192,25 @@ export async function nlAnnotate(imageId, command, projectId) {
   });
 }
 
-export async function qualityReview(imageId, projectId) {
+export async function qualityReview(projectId) {
   return jsonPost(`${API}/ai/agent/quality-review`, {
+    project_id: projectId,
+  });
+}
+
+export async function clearReviewIssues(projectId) {
+  return fetch(`${API}/ai/agent/quality-review`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId }),
+  }).then((r) => r.json());
+}
+
+export async function qualityReviewImage(imageId, projectId, projectLabels) {
+  return jsonPost(`${API}/ai/agent/quality-review/image`, {
     image_id: imageId,
     project_id: projectId,
+    project_labels: projectLabels || [],
   });
 }
 

@@ -5,13 +5,13 @@ export const useStore = create((set, get) => ({
   projects: [],
   currentProject: null,
   setProjects: (projects) => set({ projects }),
-  setCurrentProject: (project) => set({ currentProject: project }),
+  setCurrentProject: (project) => set({ currentProject: project, reviewIssues: [], reviewHasRun: false, aiResults: [], annotations: [], selectedAnnotation: null }),
 
   // Images
   images: [],
   currentImage: null,
   setImages: (images) => set({ images }),
-  setCurrentImage: (image) => set({ currentImage: image, reviewIssues: [] }),
+  setCurrentImage: (image) => set({ currentImage: image, highlightRegion: null, aiResults: [], selectedAnnotation: null }),
   updateImage: (id, data) => set(s => ({
     images: s.images.map(img => img.id === id ? { ...img, ...data } : img),
     currentImage: s.currentImage?.id === id ? { ...s.currentImage, ...data } : s.currentImage,
@@ -20,17 +20,58 @@ export const useStore = create((set, get) => ({
   // Annotations for current image
   annotations: [],
   selectedAnnotation: null,
-  setAnnotations: (annotations) => set({ annotations }),
+  _undoStack: [],
+  _redoStack: [],
+  _pushUndo: () => set(s => ({
+    _undoStack: [...s._undoStack.slice(-49), s.annotations],
+    _redoStack: [],
+  })),
+  canUndo: false,
+  canRedo: false,
+  undo: () => set(s => {
+    if (s._undoStack.length === 0) return s;
+    const prev = s._undoStack[s._undoStack.length - 1];
+    return {
+      _undoStack: s._undoStack.slice(0, -1),
+      _redoStack: [...s._redoStack, s.annotations],
+      annotations: prev,
+      selectedAnnotation: null,
+      canUndo: s._undoStack.length - 1 > 0,
+      canRedo: true,
+    };
+  }),
+  redo: () => set(s => {
+    if (s._redoStack.length === 0) return s;
+    const next = s._redoStack[s._redoStack.length - 1];
+    return {
+      _redoStack: s._redoStack.slice(0, -1),
+      _undoStack: [...s._undoStack, s.annotations],
+      annotations: next,
+      selectedAnnotation: null,
+      canUndo: true,
+      canRedo: s._redoStack.length - 1 > 0,
+    };
+  }),
+  setAnnotations: (annotations) => set({ annotations, _undoStack: [], _redoStack: [], canUndo: false, canRedo: false }),
   addAnnotation: (ann) => set(s => {
     if (ann.id && s.annotations.some(a => a.id === ann.id)) return s;
-    return { annotations: [...s.annotations, ann] };
+    const newUndo = [...s._undoStack.slice(-49), s.annotations];
+    return { annotations: [...s.annotations, ann], _undoStack: newUndo, _redoStack: [], canUndo: true, canRedo: false };
   }),
-  updateAnnotation: (id, data) => set(s => ({
-    annotations: s.annotations.map(a => a.id === id ? { ...a, ...data } : a)
-  })),
-  removeAnnotation: (id) => set(s => ({
-    annotations: s.annotations.filter(a => a.id !== id)
-  })),
+  updateAnnotation: (id, data) => set(s => {
+    const newUndo = [...s._undoStack.slice(-49), s.annotations];
+    return {
+      annotations: s.annotations.map(a => a.id === id ? { ...a, ...data } : a),
+      _undoStack: newUndo, _redoStack: [], canUndo: true, canRedo: false,
+    };
+  }),
+  removeAnnotation: (id) => set(s => {
+    const newUndo = [...s._undoStack.slice(-49), s.annotations];
+    return {
+      annotations: s.annotations.filter(a => a.id !== id),
+      _undoStack: newUndo, _redoStack: [], canUndo: true, canRedo: false,
+    };
+  }),
   setSelectedAnnotation: (ann) => set({ selectedAnnotation: ann }),
 
   // Label classes
@@ -68,7 +109,13 @@ export const useStore = create((set, get) => ({
 
   // Review issues
   reviewIssues: [],
+  reviewHasRun: false,
   setReviewIssues: (issues) => set({ reviewIssues: issues }),
+  setReviewHasRun: (v) => set({ reviewHasRun: v }),
+
+  // Highlight region for missing annotations (dashed orange box on canvas)
+  highlightRegion: null, // { x1, y1, x2, y2, label }
+  setHighlightRegion: (region) => set({ highlightRegion: region }),
 
   // Dataset health
   datasetHealth: null,
