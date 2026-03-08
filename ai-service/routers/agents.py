@@ -31,6 +31,11 @@ router = APIRouter(prefix="/agent", tags=["agents"])
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+def _clip_prompted(labels: list[str]) -> list[str]:
+    """Wrap labels in a CLIP prompt template for better zero-shot accuracy."""
+    return [f"a photo of a {l}" for l in labels]
+
+
 def _clip_encode_image_pil(pil_img) -> np.ndarray:
     preprocess = get_clip_preprocess()
     model = get_clip_model()
@@ -326,7 +331,16 @@ async def quality_review(
 
     issues: List[QualityIssue] = []
 
-    all_labels = list({a["label"] for a in annot_list if "label" in a})
+    # Build candidate labels from the full project label set so CLIP can
+    # discriminate across all classes (not just those on the current image).
+    image_labels = list({a["label"] for a in annot_list if "label" in a})
+    candidate_labels = list(dict.fromkeys(proj_labels + image_labels)) if proj_labels else image_labels
+    if len(candidate_labels) < 2:
+        candidate_labels = candidate_labels + ["other"]
+
+    # Pre-encode prompted candidate labels once for all annotations
+    prompted_candidates = _clip_prompted(candidate_labels)
+    text_emb_labels = _clip_encode_text(prompted_candidates)
 
     # --- a) Label-region consistency ---
     for ann in annot_list:
@@ -345,9 +359,7 @@ async def quality_review(
             continue
 
         img_emb = _clip_encode_image_pil(crop)
-        candidate_labels = all_labels if len(all_labels) > 1 else [label, "other"]
-        text_emb = _clip_encode_text(candidate_labels)
-        sims = text_emb @ img_emb
+        sims = text_emb_labels @ img_emb
         exp = np.exp(sims - sims.max())
         probs = exp / exp.sum()
 
@@ -355,62 +367,50 @@ async def quality_review(
         if label_idx >= 0:
             label_prob = float(probs[label_idx])
             best_idx = int(np.argmax(probs))
-            if best_idx != label_idx and float(probs[best_idx]) > label_prob * 1.5:
+            best_prob = float(probs[best_idx])
+            # Use absolute gap threshold instead of ratio (works with any class count)
+            if best_idx != label_idx and (best_prob - label_prob) > 0.10:
                 issues.append(QualityIssue(
                     type="label_mismatch",
                     severity="high",
                     message=(
                         f"Annotation '{ann_id}' labelled as '{label}' "
                         f"(score {label_prob:.2f}), but CLIP thinks it is "
-                        f"'{candidate_labels[best_idx]}' (score {probs[best_idx]:.2f})."
+                        f"'{candidate_labels[best_idx]}' (score {best_prob:.2f})."
                     ),
                     annotation_id=ann_id,
                     suggestion=f"Consider re-labelling to '{candidate_labels[best_idx]}'.",
                 ))
 
-    # --- b) Missing annotation detection via SAM + CLIP ---
-    if proj_labels and np_img is not None:
-        img_h, img_w = np_img.shape[:2]
-        img_area = img_h * img_w
-        min_area = img_area * 0.01  # skip segments < 1% of image
-
+    # --- b) Missing annotation detection via YOLO-World + SAM2 ---
+    if proj_labels and pil_img is not None:
         # Build list of existing annotation bboxes [x1, y1, x2, y2]
         existing_bboxes = []
         for ann in annot_list:
             b = ann.get("bbox")
-            if b and all(k in b for k in ("x", "y", "w", "h")):
+            if b and isinstance(b, dict) and all(k in b for k in ("x", "y", "w", "h")):
                 existing_bboxes.append([b["x"], b["y"], b["x"] + b["w"], b["y"] + b["h"]])
 
         try:
-            masks_data = _segment_everything(np_img, points_per_side=16)
+            detections = _detect_and_segment(pil_img, proj_labels, conf=0.15)
         except Exception as exc:
-            logger.warning("SAM segment-everything failed during quality review: %s", exc)
-            masks_data = []
+            logger.warning("YOLO-World detection failed during quality review: %s", exc)
+            detections = []
 
-        clip_labels = proj_labels + ["background", "other"]
-        text_emb_miss = _clip_encode_text(clip_labels)
-        n_proj = len(proj_labels)
-
-        for entry in masks_data:
-            seg_area = int(entry.get("area", 0))
-            if seg_area < min_area:
-                continue
-            x, y, w, h = [int(v) for v in entry["bbox"]]
-            if w < 5 or h < 5:
-                continue
-
-            seg_box = [x, y, x + w, y + h]
+        for det in detections:
+            x, y, w, h = det["bbox"]
+            det_box = [x, y, x + w, y + h]
+            confidence = det["confidence"]
 
             # Check bbox IoU against existing annotation bboxes — skip if overlaps
             skip = False
             for eb in existing_bboxes:
-                # Bbox IoU: seg_box and eb are both [x1, y1, x2, y2]
-                ix1 = max(seg_box[0], eb[0])
-                iy1 = max(seg_box[1], eb[1])
-                ix2 = min(seg_box[2], eb[2])
-                iy2 = min(seg_box[3], eb[3])
+                ix1 = max(det_box[0], eb[0])
+                iy1 = max(det_box[1], eb[1])
+                ix2 = min(det_box[2], eb[2])
+                iy2 = min(det_box[3], eb[3])
                 inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-                area_a = (seg_box[2] - seg_box[0]) * (seg_box[3] - seg_box[1])
+                area_a = (det_box[2] - det_box[0]) * (det_box[3] - det_box[1])
                 area_b = (eb[2] - eb[0]) * (eb[3] - eb[1])
                 union = area_a + area_b - inter
                 iou = inter / union if union > 0 else 0.0
@@ -420,35 +420,25 @@ async def quality_review(
             if skip:
                 continue
 
-            # Crop and classify with CLIP
-            crop = pil_img.crop((x, y, x + w, y + h))
-            if crop.width < 2 or crop.height < 2:
-                continue
-            img_emb = _clip_encode_image_pil(crop)
-            sims = text_emb_miss @ img_emb
-            exp = np.exp(sims - sims.max())
-            probs = exp / exp.sum()
+            # Severity based on detection confidence
+            if confidence > 0.50:
+                severity = "high"
+            elif confidence > 0.30:
+                severity = "medium"
+            else:
+                severity = "low"
 
-            # Best project label (excluding background/other)
-            proj_probs = probs[:n_proj]
-            best_proj_idx = int(np.argmax(proj_probs))
-            best_proj_prob = float(proj_probs[best_proj_idx])
-            bg_prob = float(probs[n_proj])      # "background"
-            other_prob = float(probs[n_proj + 1])  # "other"
-
-            if best_proj_prob > 0.45 and best_proj_prob > bg_prob * 1.5 and best_proj_prob > other_prob * 1.5:
-                best_label = proj_labels[best_proj_idx]
-                issues.append(QualityIssue(
-                    type="missing_annotation",
-                    severity="medium",
-                    message=(
-                        f"Possible unannotated '{best_label}' detected "
-                        f"(confidence {best_proj_prob:.0%})."
-                    ),
-                    bbox=[float(seg_box[0]), float(seg_box[1]), float(seg_box[2]), float(seg_box[3])],
-                    predicted_label=best_label,
-                    confidence=round(best_proj_prob, 3),
-                ))
+            issues.append(QualityIssue(
+                type="missing_annotation",
+                severity=severity,
+                message=(
+                    f"Possible unannotated '{det['label']}' detected "
+                    f"(confidence {confidence:.0%})."
+                ),
+                bbox=[float(det_box[0]), float(det_box[1]), float(det_box[2]), float(det_box[3])],
+                predicted_label=det["label"],
+                confidence=round(confidence, 3),
+            ))
 
     n_mismatch = sum(1 for i in issues if i.type == "label_mismatch")
     n_missing = sum(1 for i in issues if i.type == "missing_annotation")
@@ -857,9 +847,18 @@ async def _execute_tool(
         if not annotations:
             return {"issues": [], "summary": "No annotations to check."}
 
-        # Reuse the quality review logic inline (simplified)
+        # Build candidate labels from project label classes (not just image labels)
+        label_classes = context.get("labelClasses", [])
+        proj_label_names = [lc["name"] for lc in label_classes if "name" in lc] if label_classes else []
+        image_labels = list({a.get("label", "") for a in annotations})
+        candidate_labels = list(dict.fromkeys(proj_label_names + image_labels)) if proj_label_names else image_labels
+        if len(candidate_labels) < 2:
+            candidate_labels = candidate_labels + ["other"]
+
+        prompted = _clip_prompted(candidate_labels)
+        text_emb = _clip_encode_text(prompted)
+
         issues = []
-        all_labels = list({a.get("label", "") for a in annotations})
         for ann in annotations:
             bbox = ann.get("data")
             if isinstance(bbox, str):
@@ -881,15 +880,15 @@ async def _execute_tool(
                 continue
             label = ann.get("label", "")
             img_emb = _clip_encode_image_pil(crop)
-            candidate_labels = all_labels if len(all_labels) > 1 else [label, "other"]
-            text_emb = _clip_encode_text(candidate_labels)
             sims = text_emb @ img_emb
             exp = np.exp(sims - sims.max())
             probs = exp / exp.sum()
             label_idx = candidate_labels.index(label) if label in candidate_labels else -1
             if label_idx >= 0:
                 best_idx = int(np.argmax(probs))
-                if best_idx != label_idx and float(probs[best_idx]) > float(probs[label_idx]) * 1.5:
+                best_prob = float(probs[best_idx])
+                label_prob = float(probs[label_idx])
+                if best_idx != label_idx and (best_prob - label_prob) > 0.10:
                     issues.append({
                         "type": "label_mismatch",
                         "message": f"'{ann.get('id', '?')}' labelled '{label}' but looks like '{candidate_labels[best_idx]}'",

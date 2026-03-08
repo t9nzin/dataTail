@@ -11,6 +11,61 @@ const uploadsBase = path.join(__dirname, '..', '..', 'uploads');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000';
 
+/**
+ * Extract a {x, y, w, h} bbox from any annotation data format.
+ * Handles: {x1,y1,x2,y2}, {x,y,w,h}, {bbox:{x,y,w,h}}, polygon arrays, {polygon:[[x,y],...]}.
+ */
+function extractAnnotationGeometry(a) {
+  let parsed;
+  try {
+    parsed = typeof a.data === 'string' ? JSON.parse(a.data) : a.data;
+  } catch {
+    console.warn(`[quality-review] Unparseable annotation data for ${a.id}`);
+    return { bbox: null, polygon: null };
+  }
+
+  let bbox = null;
+  let polygon = null;
+
+  // bbox type: {x1, y1, x2, y2}
+  if (a.type === 'bbox' && parsed && parsed.x1 != null) {
+    bbox = { x: parsed.x1, y: parsed.y1, w: parsed.x2 - parsed.x1, h: parsed.y2 - parsed.y1 };
+  }
+  // AI bbox: {x, y, w, h} at top level
+  else if (parsed && parsed.x != null && parsed.y != null && parsed.w != null && parsed.h != null) {
+    bbox = { x: parsed.x, y: parsed.y, w: parsed.w, h: parsed.h };
+  }
+  // Nested AI format: {bbox: {x, y, w, h}}
+  else if (parsed && typeof parsed.bbox === 'object' && parsed.bbox !== null &&
+           parsed.bbox.x != null && parsed.bbox.w != null) {
+    bbox = { x: parsed.bbox.x, y: parsed.bbox.y, w: parsed.bbox.w, h: parsed.bbox.h };
+  }
+  // polygon: {polygon: [[x,y],...]} (wrapped)
+  else if (parsed && parsed.polygon && Array.isArray(parsed.polygon)) {
+    polygon = parsed.polygon;
+  }
+  // Direct polygon: [[x,y],...] or [[[x,y],...]]
+  else if (Array.isArray(parsed) && parsed.length > 0) {
+    const flat = Array.isArray(parsed[0]?.[0]) ? parsed[0] : parsed;
+    polygon = flat;
+  }
+
+  // Derive bbox from polygon if we don't have one yet
+  if (!bbox && polygon && polygon.length > 0) {
+    const xs = polygon.map((p) => p[0]);
+    const ys = polygon.map((p) => p[1]);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    const maxX = Math.max(...xs), maxY = Math.max(...ys);
+    bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  if (!bbox && !polygon) {
+    console.warn(`[quality-review] Could not extract geometry for annotation ${a.id}, type=${a.type}`);
+  }
+
+  return { bbox, polygon };
+}
+
 const router = Router();
 
 /**
@@ -298,19 +353,8 @@ router.post('/agent/quality-review/image', async (req, res, next) => {
 
     const rawAnnotations = db.prepare('SELECT * FROM annotations WHERE image_id = ?').all(image_id);
     const annotations = rawAnnotations.map((a) => {
-      const parsed = JSON.parse(a.data);
-      let bbox = null;
-      if (a.type === 'bbox' && parsed.x1 != null) {
-        bbox = { x: parsed.x1, y: parsed.y1, w: parsed.x2 - parsed.x1, h: parsed.y2 - parsed.y1 };
-      } else if (a.type === 'polygon' && Array.isArray(parsed) && parsed.length > 0) {
-        const flat = Array.isArray(parsed[0]?.[0]) ? parsed[0] : parsed;
-        const xs = flat.map((p) => p[0]);
-        const ys = flat.map((p) => p[1]);
-        const minX = Math.min(...xs), minY = Math.min(...ys);
-        const maxX = Math.max(...xs), maxY = Math.max(...ys);
-        bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-      }
-      return { id: a.id, label: a.label, type: a.type, bbox, polygon: a.type === 'polygon' ? parsed : null };
+      const { bbox, polygon } = extractAnnotationGeometry(a);
+      return { id: a.id, label: a.label, type: a.type, bbox, polygon };
     });
 
     const result = await proxyWithImage('/agent/quality-review', image_id, {
@@ -382,19 +426,8 @@ router.post('/agent/quality-review', async (req, res, next) => {
       ).all(image.id);
 
       const annotations = rawAnnotations.map((a) => {
-        const parsed = JSON.parse(a.data);
-        let bbox = null;
-        if (a.type === 'bbox' && parsed.x1 != null) {
-          bbox = { x: parsed.x1, y: parsed.y1, w: parsed.x2 - parsed.x1, h: parsed.y2 - parsed.y1 };
-        } else if (a.type === 'polygon' && Array.isArray(parsed) && parsed.length > 0) {
-          const flat = Array.isArray(parsed[0]?.[0]) ? parsed[0] : parsed;
-          const xs = flat.map((p) => p[0]);
-          const ys = flat.map((p) => p[1]);
-          const minX = Math.min(...xs), minY = Math.min(...ys);
-          const maxX = Math.max(...xs), maxY = Math.max(...ys);
-          bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-        }
-        return { id: a.id, label: a.label, type: a.type, bbox, polygon: a.type === 'polygon' ? parsed : null };
+        const { bbox, polygon } = extractAnnotationGeometry(a);
+        return { id: a.id, label: a.label, type: a.type, bbox, polygon };
       });
 
       let result;
