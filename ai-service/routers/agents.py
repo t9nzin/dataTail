@@ -101,11 +101,26 @@ def _segment_everything_sam2(pil_img) -> list[dict]:
 
 def _detect_and_segment(pil_img, labels: list[str], conf: float = 0.2) -> list[dict]:
     """Use YOLO-World for detection + SAM2 for precise masks.
-    Returns list of dicts with label, confidence, bbox, segmentation mask."""
+    Returns list of dicts with label, confidence, bbox, segmentation mask.
+    Only returns detections whose label is in the requested *labels* list."""
     import tempfile, os
 
     yolo = get_yolo_world_model()
     sam2 = get_sam2_model()
+
+    # Add a small set of contrastive/negative classes so YOLO-World can
+    # discriminate.  Too many dilutes confidence; too few causes false positives.
+    # Pick semantically close categories first (animals if target is animal, etc.)
+    target_set = {l.lower() for l in labels}
+    # Nearby animal/object categories make the best contrastive set
+    _ANIMAL_WORDS = {"dog", "cat", "bird", "horse", "cow", "sheep", "fish", "bear"}
+    target_is_animal = bool(target_set & _ANIMAL_WORDS)
+    if target_is_animal:
+        contrastive = [c for c in COMMON_CATEGORIES
+                       if c.lower() not in target_set and c.lower() in _ANIMAL_WORDS]
+    else:
+        contrastive = [c for c in COMMON_CATEGORIES if c.lower() not in target_set]
+    all_classes = list(labels) + contrastive[:6]
 
     # Save image to temp file (ultralytics needs a path)
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
@@ -114,24 +129,36 @@ def _detect_and_segment(pil_img, labels: list[str], conf: float = 0.2) -> list[d
 
     try:
         # Step 1: YOLO-World detects objects by text labels
-        yolo.set_classes(labels)
+        yolo.set_classes(all_classes)
         det_results = yolo.predict(tmp_path, conf=conf, verbose=False)[0]
 
         if len(det_results.boxes) == 0:
             return []
 
+        # Filter to only boxes matching the requested labels
+        keep_indices = []
+        for i, box in enumerate(det_results.boxes):
+            cls_idx = int(box.cls[0])
+            if yolo.names[cls_idx].lower() in target_set:
+                keep_indices.append(i)
+
+        if not keep_indices:
+            return []
+
         # Step 2: SAM2 generates precise masks using detected bboxes
-        bboxes = det_results.boxes.xyxy.cpu().numpy().tolist()
-        seg_results = sam2.predict(tmp_path, bboxes=bboxes, verbose=False)[0]
+        all_bboxes = det_results.boxes.xyxy.cpu().numpy().tolist()
+        kept_bboxes = [all_bboxes[i] for i in keep_indices]
+        seg_results = sam2.predict(tmp_path, bboxes=kept_bboxes, verbose=False)[0]
 
         results = []
-        for i, box in enumerate(det_results.boxes):
+        for seg_i, det_i in enumerate(keep_indices):
+            box = det_results.boxes[det_i]
             cls_idx = int(box.cls[0])
             confidence = float(box.conf[0])
             x1, y1, x2, y2 = box.xyxy[0].tolist()
             x, y, w, h = int(x1), int(y1), int(x2 - x1), int(y2 - y1)
 
-            binary = seg_results.masks.data[i].cpu().numpy().astype(np.uint8)
+            binary = seg_results.masks.data[seg_i].cpu().numpy().astype(np.uint8)
             results.append({
                 "label": yolo.names[cls_idx],
                 "confidence": round(confidence, 3),
