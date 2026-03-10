@@ -2,19 +2,16 @@
 
 An AI-assisted dataset annotation platform that runs entirely within your tailnet — private, fast, and built for teams.
 
----
+SPUR Founder Track winner at Hack Canada 2026! Check out the Devpost here :-) https://devpost.com/software/datascale
 
 ## Demo
 
 [![Watch the demo](https://img.youtube.com/vi/jEqFOQzjBxE/0.jpg)](https://www.youtube.com/watch?v=jEqFOQzjBxE)
 
----
 
 ## Inspiration
 
 One of our team members was once responsible for annotating sensitive medical imaging research data. This is a product of a realization that there is too much friction between maintaining dataset privacy and team annotator collaboration. 
-
----
 
 ## Features
 
@@ -24,8 +21,6 @@ One of our team members was once responsible for annotating sensitive medical im
 - **Real-Time Collaboration** — Multiple annotators can work simultaneously across the same dataset
 - **Export Ready** — Annotated datasets can be exported in standard formats for immediate use in model training pipelines
 
----
-
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v18+
@@ -33,7 +28,6 @@ One of our team members was once responsible for annotating sensitive medical im
 - [Tailscale](https://tailscale.com/) installed and authenticated on all machines
 - A Tailscale auth key (for service-to-service communication on the tailnet)
 
----
 
 ## Getting Started
 
@@ -81,7 +75,6 @@ npm run dev
 
 The app will be accessible at the client's Tailscale IP address. Only devices on your tailnet can reach it.
 
----
 
 ## Built With
 
@@ -91,8 +84,6 @@ The app will be accessible at the client's Tailscale IP address. Only devices on
 | **Backend** | Node.js, Express, SQLite |
 | **AI Service** | FastAPI, MobileSAM, SAM2, Ollama, YOLO-World |
 | **Infrastrucure** | Tailscale Serve, Tailscale ACLs  |
-
----
 
 ## License
 
